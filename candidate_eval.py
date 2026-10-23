@@ -199,16 +199,25 @@ def score_candidate_sets(
     query_ndcg = []
     query_mrr = []
     query_recall = []
+    query_recall_eligible = []
+    query_ids = []
     query_users = []
-    for _, group in grouped:
+    for query_id, group in grouped:
+        query_ids.append(query_id)
+        has_positive = bool((group["label"] > 0).any())
+        query_recall_eligible.append(has_positive)
         query_ndcg.append(ndcg_at_k(group.assign(_group="q"), "score", k=10, label_col="label", group_col="_group"))
         query_mrr.append(mrr_at_k(group.assign(_group="q"), "score", k=10, label_col="label", group_col="_group"))
-        query_recall.append(recall_at_k(group.assign(_group="q"), "score", k=10, label_col="label", group_col="_group"))
+        query_recall.append(recall_at_k(group.assign(_group="q"), "score", k=10, label_col="label", group_col="_group", skip_no_positive=False))
         query_users.append(group["user"].iloc[0] if "user" in group else "unknown")
+    # Keep zero placeholders for aligned legacy vectors, but aggregate Recall
+    # only over queries with positives, as recall_at_k historically does.
+    eligible_recall = [value for value, eligible in zip(query_recall, query_recall_eligible) if eligible]
+    recall_mean = float(np.mean(eligible_recall)) if eligible_recall else 0.0
     return {
         "ndcg10": ndcg_at_k(scored, "score", k=10, label_col="label", group_col="query_id"),
         "mrr10": mrr_at_k(scored, "score", k=10, label_col="label", group_col="query_id"),
-        "recall10": recall_at_k(scored, "score", k=10, label_col="label", group_col="query_id"),
+        "recall10": recall_mean,
         "queries": int(scored["query_id"].nunique()),
         "queries_with_positive": int(grouped["label"].sum().gt(0).sum()),
         "protocol": protocol,
@@ -216,6 +225,13 @@ def score_candidate_sets(
             "ndcg10": query_ndcg,
             "mrr10": query_mrr,
             "recall10": query_recall,
+            "recall10_eligible": query_recall_eligible,
+            "query_ids": query_ids,
+            "recall10_eligible_queries": int(sum(query_recall_eligible)),
+            "recall10_eligibility_policy": (
+                "queries with at least one positive label; zero-positive queries excluded "
+                "from scalar mean and stored as 0.0; no eligible queries yields scalar 0.0"
+            ),
             "users": query_users,
         },
         "estimand": "query_weighted_macro_mean",

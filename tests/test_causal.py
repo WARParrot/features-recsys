@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from data import generate_synthetic, rolling_time_splits, split_metadata, time_split
 from history import build_histories
@@ -73,6 +74,116 @@ def test_snapshot_mask_excludes_unavailable_labels():
         df, ["user"], agg="sum", target="label", source_until=2
     ).to_numpy()
     np.testing.assert_array_equal(cutoff_result, [0.0, 1.0, 1.0])
+
+
+@pytest.mark.parametrize("operation", ["sum", "mean", "decay"])
+@pytest.mark.parametrize("selection", ["mask", "cutoff", "both"])
+def test_nonfinite_inactive_feedback_is_irrelevant(operation, selection):
+    from causal_features import CausalIndex
+
+    # Shuffled rows, two keys, timestamp ties, and an inclusive window boundary.
+    df = pd.DataFrame({
+        "event_id": [5, 1, 6, 0, 4, 2, 3],
+        "user": [1, 1, 2, 1, 1, 1, 1],
+        "timestamp": [4, 1, 5, 0, 3, 1, 2],
+        "target": [np.inf, 4.0, 8.0, 2.0, -np.inf, 6.0, np.nan],
+    })
+    mask = np.array([0, 1, 1, 1, 0, 1, 0], dtype=float)
+    source_mask = mask if selection != "cutoff" else None
+    source_until = 2 if selection != "mask" else None
+    active = np.ones(len(df), dtype=bool) if source_mask is None else mask != 0
+    if source_until is not None:
+        active &= df["timestamp"].to_numpy() < source_until
+
+    expected = []
+    for row in df.itertuples(index=False):
+        prior = active & (df["user"] == row.user) & (df["timestamp"] < row.timestamp)
+        if operation == "decay":
+            weights = 2.0 ** (-(row.timestamp - df.loc[prior, "timestamp"]))
+            expected.append((df.loc[prior, "target"] * weights).sum())
+        else:
+            prior &= df["timestamp"] >= row.timestamp - 2
+            values = df.loc[prior, "target"]
+            expected.append(values.sum() if operation == "sum" else values.mean() if len(values) else 0.0)
+
+    index = CausalIndex(df, ["user"])
+    kwargs = dict(target="target", source_mask=source_mask, source_until=source_until)
+    # Inactive nonfinite values must not even trigger floating-point warnings.
+    with np.errstate(invalid="raise"):
+        if operation == "decay":
+            actual = index.decay(half_life=1, **kwargs)
+        else:
+            actual = index.aggregate(window=2, agg=operation, **kwargs)
+    np.testing.assert_allclose(actual, expected)
+    assert np.isfinite(actual).all()
+    np.testing.assert_array_equal(mask, [0, 1, 1, 1, 0, 1, 0])
+
+
+@pytest.mark.parametrize("bad_value", [np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("operation", ["sum", "mean", "decay"])
+def test_active_nonfinite_feedback_is_rejected(operation, bad_value):
+    from causal_features import CausalIndex
+
+    # Validate every active source, even one not yet used by a query.
+    df = pd.DataFrame({
+        "event_id": [0, 1], "user": [1, 1],
+        "timestamp": [0, 1], "target": [2.0, bad_value],
+    })
+    index = CausalIndex(df, ["user"])
+    with pytest.raises(ValueError, match="target.*finite.*active"):
+        if operation == "decay":
+            index.decay(half_life=1, target="target")
+        else:
+            index.aggregate(agg=operation, target="target")
+    # Counts do not consume feedback and therefore do not validate it.
+    np.testing.assert_array_equal(index.aggregate(), [0.0, 1.0])
+
+
+@pytest.mark.parametrize("feedback_column", ["is_click", "is_positive_watch"])
+def test_baseline_features_ignore_masked_nonfinite_feedback(feedback_column):
+    from causal_features import BASELINE_FEATURES, build_baseline_features
+
+    frame = pd.DataFrame({
+        "event_id": range(5), "user": [1] * 5, "item": [10] * 5,
+        "timestamp": [0, 1, 1, 2, 3], "item_cat": [3] * 5,
+        feedback_column: [1.0, np.nan, np.inf, -np.inf, 0.0],
+        "is_purchase": [1.0, -np.inf, np.nan, np.inf, 0.0],
+    })
+    mask = [True, False, False, False, True]
+    clean = frame.copy()
+    clean.loc[[1, 2, 3], [feedback_column, "is_purchase"]] = 0.0
+    actual = build_baseline_features(frame, source_mask=mask)[BASELINE_FEATURES]
+    expected = build_baseline_features(clean, source_mask=mask)[BASELINE_FEATURES]
+    np.testing.assert_array_equal(actual, expected)
+    assert np.isfinite(actual.to_numpy()).all()
+
+
+@pytest.mark.parametrize("bad_weight", [np.nan, np.inf, -np.inf])
+def test_nonfinite_source_mask_is_rejected(bad_weight):
+    from causal_features import CausalIndex
+
+    frame = pd.DataFrame({"event_id": [0], "user": [1], "timestamp": [0]})
+    index = CausalIndex(frame, ["user"])
+    with pytest.raises(ValueError, match="source_mask.*finite"):
+        index.aggregate(source_mask=[bad_weight])
+    with pytest.raises(ValueError, match="source_mask.*finite"):
+        index.decay(half_life=1, source_mask=[bad_weight])
+
+
+def test_source_cutoff_does_not_mutate_mask():
+    from causal_features import CausalIndex
+
+    frame = pd.DataFrame({
+        "event_id": [0, 1, 2], "user": [1] * 3,
+        "timestamp": [0, 1, 2], "target": [1.0, 2.0, 3.0],
+    })
+    index = CausalIndex(frame, ["user"])
+    mask = np.ones(3, dtype=float)
+    index.aggregate(agg="sum", target="target", source_mask=mask, source_until=1)
+    np.testing.assert_array_equal(mask, np.ones(3))
+    np.testing.assert_array_equal(
+        index.aggregate(agg="sum", target="target", source_mask=mask), [0.0, 1.0, 3.0]
+    )
 
 
 def test_sampled_candidate_log_records_sampling_protocol():

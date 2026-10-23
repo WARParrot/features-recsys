@@ -36,16 +36,35 @@ class CausalIndex:
             self._group_start[start:end] = start
 
     def _known_values(self, target, source_mask, source_until):
+        """Return source values and weights under the point-in-time policy.
+
+        Mask weights must be finite. A source row is active when its mask
+        weight is nonzero and, when a cutoff is supplied, its timestamp is
+        strictly before ``source_until``.
+        Inactive target values are replaced with zero before arithmetic, so
+        missing or non-finite placeholders in held-out rows cannot propagate.
+        Active target values must be finite; silently accepting them would make
+        aggregate and decay features non-finite or otherwise data-dependent.
+        """
         n = len(self.base)
         if source_mask is None:
             known = np.ones(n, dtype=np.float64)
         else:
-            known = np.asarray(source_mask, dtype=np.float64)
+            known = np.asarray(source_mask, dtype=np.float64).copy()
             if len(known) != n:
                 raise ValueError("source_mask must have the same length as df")
+            if not np.isfinite(known).all():
+                raise ValueError("source_mask must contain only finite values")
         if source_until is not None:
             known *= self.base[self.time_col].to_numpy() < source_until
-        values = np.ones(n, dtype=np.float64) if target is None else self.base[target].to_numpy(dtype=np.float64)
+        active = known != 0
+        if target is None:
+            values = np.ones(n, dtype=np.float64)
+        else:
+            values = self.base[target].to_numpy(dtype=np.float64).copy()
+            if not np.isfinite(values[active]).all():
+                raise ValueError(f"{target} must be finite for active source rows")
+            values[~active] = 0.0
         return values[self.order], known[self.order]
 
     def aggregate(self, window=None, agg="count", target=None, source_mask=None, source_until=None):

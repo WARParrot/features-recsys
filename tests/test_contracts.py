@@ -1,3 +1,7 @@
+import subprocess
+import sys
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -33,6 +37,28 @@ def test_candidate_features_require_query_ids():
     )
     with pytest.raises(KeyError, match="query_id"):
         candidate_features(full, full)
+
+
+def test_cli_rejects_kion_single_split_before_loading_data():
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "compare_methods.py",
+            "--kion-interactions",
+            str(root / "missing-kion-interactions.csv"),
+            "--evaluation",
+            "single_split",
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "KION supports only --evaluation rolling" in result.stderr
+    assert "missing-kion-interactions.csv" not in result.stderr
 
 
 def test_ranking_rejects_non_finite_scores():

@@ -170,6 +170,8 @@ def main():
 
     if args.kion_interactions and args.mind_root:
         parser.error("choose only one of --kion-interactions and --mind-root")
+    if args.kion_interactions and args.evaluation == "single_split":
+        parser.error("KION supports only --evaluation rolling; single_split is unsupported")
     if args.evaluation == "rolling":
         if args.mind_root and args.mind_protocol == "official_train_dev":
             parser.error("official_train_dev is available with --evaluation single_split")

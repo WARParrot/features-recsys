@@ -268,12 +268,14 @@ def test_sampled_candidates_use_history_for_seen_items_but_full_catalog_for_nega
     assert set(candidates.loc[candidates["label"] == 0, "item"]) == set()
     assert candidates.empty
     assert candidates.attrs["candidate_protocol"]["skipped_positive_queries"] == 1
+    static_catalog = catalog[["item", "item_cat"]].drop_duplicates("item").copy()
+    static_catalog["first_seen"] = [1, 1, 1]
     static_candidates = sampled_candidate_log(
         events,
         history,
         n_items=3,
         n_negatives=1,
-        item_catalog=catalog,
+        item_catalog=static_catalog,
         seed=3,
         catalog_protocol="static_catalog",
     )

@@ -24,6 +24,9 @@ jobs:
       - run: python -m pip install --no-deps -e .
       - run: python -m compileall -q .
       - run: python -m pytest -q
+      - run: python -m pip wheel --no-deps --no-build-isolation . -w /tmp/recsys-wheel
+      - run: python -m pip install --no-deps --force-reinstall /tmp/recsys-wheel/*.whl
+      - run: python -c "import compare_methods, kion_data"
       - run: python validate_protocol.py results/kion_50k_protocol_v4.json
       - run: python compare_methods.py --evaluation single_split --n-events 500 --seeds 42 --json > /tmp/recsys-smoke.json
       - run: python validate_protocol.py /tmp/recsys-smoke.json

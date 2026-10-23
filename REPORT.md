@@ -24,6 +24,8 @@ On the canonical result, `auto_gain` differs from `manual` by +0.00137 test AUC 
 
 ## 2. Validity contract
 
+Current rolling protocol (version 5) supports `history_mode=role_frozen`: for each train/select/valid/test role, feature sources are the strict timestamp prefix before the role start and remain frozen within that role. The legacy prequential behavior remains available explicitly with `--history-mode prequential`. Candidate sensitivity is configurable through `--candidate-n-negatives`, `--candidate-max-queries`, and `--candidate-sampling` (`uniform`, `popularity`, `recent`); `--candidate-catalog full` requires a validated static catalog with `item`, `item_cat`, and finite `first_seen`. These settings define new evaluations and are not retroactively applied to the checked-in protocol-v4 JSON.
+
 - Equal timestamps are atomic: features at time `t` use only rows with timestamp `< t`.
 - Test rows are excluded from feature sources and causal popularity references.
 - Candidate rows are scored from the same pre-test snapshot for every method.
@@ -77,6 +79,8 @@ The following point summaries are recomputed from the six fold/seed cells in the
 The canonical JSON records 2,187 fold×seed ranking queries (345–378 per cell) and per-cell skipped-positive counts (22–55; 213 summed over the six evaluation cells, not unique queries). It includes package versions, command, source hashes, source-tree manifest/hash, thread settings, protocol and split metadata, per-query metrics, and per-cell user-cluster intervals for query-weighted NDCG@10. It does not contain `event_auc_uncertainty`, and no event-level AUC bootstrap was recomputed for this artifact. Its immutable provenance snapshot is `metadata.source_tree.sha256 = c77188b69f3d65af97879d48dcecc1b5554fb9b780cbabdb6f374a865903fe13` and code revision `6f8d386d8460be83cc061f5075a714ec32ac3f0c`.
 
 ## 6. Reproduction
+
+The command below is a **current-code rerun**, not an exact replay of the immutable protocol-v4 result. For an explicit legacy comparison use `--history-mode prequential`; for the corrected current protocol retain the default `role_frozen` and save the new JSON separately. The KION adapter validates required IDs/dates separately from the allowed missing `watched_pct` policy, and the source manifest excludes runtime/build outputs.
 
 ```bash
 cd recsys_corrected_artifact

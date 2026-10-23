@@ -36,16 +36,32 @@ def load_kion(
     Metadata is reduced to stable categorical codes to keep the first experiment
     focused on temporal aggregate feature construction rather than text models.
     """
+    if not np.isfinite(watch_threshold):
+        raise ValueError("watch_threshold must be finite")
     frame = _read_interactions(Path(interactions))
-    if frame.empty or frame.iloc[-1].isna().any():
-        raise ValueError("KION interactions contain an incomplete final row")
+    if frame.empty:
+        raise ValueError("KION interactions are empty")
     required = {"user_id", "item_id", "last_watch_dt", "watched_pct"}
     missing = required - set(frame.columns)
     if missing:
         raise KeyError(f"KION interactions missing columns: {sorted(missing)}")
+    required_non_null = ["user_id", "item_id", "last_watch_dt"]
+    if frame[required_non_null].isna().any().any():
+        raise ValueError(
+            "KION interactions contain missing required values: "
+            + ", ".join(required_non_null)
+        )
     frame = frame.rename(columns={"user_id": "user", "item_id": "item"}).copy()
-    frame["user"] = pd.to_numeric(frame["user"], errors="raise").astype("int64")
-    frame["item"] = pd.to_numeric(frame["item"], errors="raise").astype("int64")
+    try:
+        for column in ("user", "item"):
+            values = pd.to_numeric(frame[column], errors="raise")
+            if not np.isfinite(values).all() or (values % 1 != 0).any():
+                raise ValueError("non-integer identifier")
+            if ((values < 0) | (values > np.iinfo(np.int64).max)).any():
+                raise ValueError("identifier out of range")
+            frame[column] = values.astype("int64")
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("KION user_id and item_id must be integer-like") from exc
     if max_users is not None:
         if max_users <= 0:
             raise ValueError("max_users must be positive")
@@ -57,7 +73,11 @@ def load_kion(
     if parsed_dates.isna().any():
         raise ValueError("KION interactions contain invalid timestamps")
     frame["timestamp"] = parsed_dates.astype("int64") // 10**9
-    frame["watched_pct"] = pd.to_numeric(frame["watched_pct"], errors="coerce").fillna(0.0)
+    watched = pd.to_numeric(frame["watched_pct"], errors="coerce")
+    malformed_watched = frame["watched_pct"].notna() & watched.isna()
+    if malformed_watched.any() or not np.isfinite(watched.dropna()).all():
+        raise ValueError("KION watched_pct contains non-numeric or non-finite values")
+    frame["watched_pct"] = watched.fillna(0.0)
     frame["binary_label"] = (frame["watched_pct"] >= watch_threshold).astype("int8")
     frame["label"] = frame["binary_label"]
     # KION has observed watch interactions, not impressions/clicks. Keep

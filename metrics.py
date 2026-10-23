@@ -204,6 +204,8 @@ def cluster_bootstrap_auc_comparison(
     return {
         "estimand": "pooled_event_level_auc",
         "unit": "user_cluster_resampling",
+        "paired_comparison": True,
+        "conditional_on": ["fixed_scores", "observed_test_population", "fixed_features"],
         "baseline": baseline,
         "observations": int(len(labels)),
         "clusters": int(len(cluster_ids)),

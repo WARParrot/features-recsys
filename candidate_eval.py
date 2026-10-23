@@ -6,6 +6,32 @@ from metrics import mrr_at_k, ndcg_at_k, recall_at_k
 from models import matrix
 
 
+def validate_static_catalog(item_catalog):
+    """Validate and normalize a static item catalog for candidate sampling."""
+    if not isinstance(item_catalog, pd.DataFrame):
+        raise ValueError("static catalog requires an item_catalog DataFrame")
+    required = {"item", "item_cat", "first_seen"}
+    missing = required - set(item_catalog.columns)
+    if missing:
+        raise ValueError(f"static catalog is missing columns: {sorted(missing)}")
+    if item_catalog.empty or item_catalog["item"].duplicated().any():
+        raise ValueError("static catalog must contain one row per item")
+    catalog = item_catalog.copy()
+    item_values = pd.to_numeric(catalog["item"], errors="coerce")
+    category_values = pd.to_numeric(catalog["item_cat"], errors="coerce")
+    first_seen = pd.to_numeric(catalog["first_seen"], errors="coerce")
+    for values in (item_values, category_values, first_seen):
+        numeric = values.to_numpy(dtype=float)
+        if not np.isfinite(numeric).all() or not np.equal(numeric, np.floor(numeric)).all():
+            raise ValueError("static catalog item, item_cat and first_seen must be finite integers")
+    if first_seen.isna().any() or not np.isfinite(first_seen.to_numpy(dtype=float)).all():
+        raise ValueError("static catalog first_seen must be finite")
+    catalog["first_seen"] = first_seen.astype("int64")
+    catalog["item"] = item_values.astype("int64")
+    catalog["item_cat"] = category_values.astype("int64")
+    return catalog
+
+
 def sampled_candidate_log(
     events,
     full_log,
@@ -15,6 +41,8 @@ def sampled_candidate_log(
     seed=7,
     item_catalog=None,
     catalog_protocol="historical_seen_items",
+    sampling="uniform",
+    candidate_catalog=None,
 ):
     """Sample unseen negatives from a temporally available item catalog.
 
@@ -34,10 +62,18 @@ def sampled_candidate_log(
         raise ValueError("n_items must be a positive integer")
     if not isinstance(n_negatives, (int, np.integer)) or n_negatives < 0:
         raise ValueError("n_negatives must be a non-negative integer")
+    if candidate_catalog is not None:
+        if catalog_protocol != "historical_seen_items" and catalog_protocol != candidate_catalog:
+            raise ValueError("catalog_protocol and candidate_catalog disagree")
+        catalog_protocol = candidate_catalog
     if catalog_protocol not in {"historical_seen_items", "static_catalog"}:
         raise ValueError("catalog_protocol must be 'historical_seen_items' or 'static_catalog'")
+    if sampling not in {"uniform", "popularity", "recent"}:
+        raise ValueError("sampling must be 'uniform', 'popularity', or 'recent'")
     if not isinstance(max_queries, (int, np.integer)) or max_queries <= 0:
         raise ValueError("max_queries must be a positive integer")
+    if catalog_protocol == "static_catalog":
+        item_catalog = validate_static_catalog(item_catalog)
     positives = events.loc[events["binary_label"] == 1]
     if len(positives) > max_queries:
         positives = positives.sample(max_queries, random_state=seed)
@@ -50,7 +86,11 @@ def sampled_candidate_log(
     if catalog_protocol == "historical_seen_items":
         first_seen = full_log.groupby("item", sort=False)["timestamp"].min().to_dict()
     else:
-        first_seen = {item: -np.inf for item in item_categories}
+        item_catalog = validate_static_catalog(item_catalog)
+        static_first_seen = item_catalog.set_index("item")["first_seen"]
+        if static_first_seen.isna().any() or not np.isfinite(static_first_seen.to_numpy(dtype=float)).all():
+            raise ValueError("static_catalog first_seen must be finite for every item")
+        first_seen = static_first_seen.astype("int64").to_dict()
     available_items = sorted(item_categories)
     next_event_id = int(full_log["event_id"].max()) + 1
     rows = []
@@ -62,9 +102,7 @@ def sampled_candidate_log(
         # would contain a positive outside the candidate universe used for its
         # negatives and ranking metrics would be ill-defined.
         positive_first_seen = first_seen.get(event.item, np.inf)
-        if catalog_protocol == "historical_seen_items" and not (
-            positive_first_seen < int(event.timestamp)
-        ):
+        if not (positive_first_seen < int(event.timestamp)):
             skipped_positive_count += 1
             continue
         query_id = len(negative_counts)
@@ -81,7 +119,29 @@ def sampled_candidate_log(
         ]
         if len(available) == 0:
             continue
-        negatives = rng.choice(len(available), min(n_negatives, len(available)), replace=False)
+        sample_size = min(n_negatives, len(available))
+        if sampling == "uniform":
+            probabilities = None
+        else:
+            prior = full_log.loc[full_log["timestamp"] < int(event.timestamp)]
+            counts = prior.groupby("item").size().to_dict()
+            if sampling == "popularity":
+                weights = np.asarray([counts.get(item, 0) for item in available], dtype=float)
+            else:
+                last_seen = prior.groupby("item")["timestamp"].max().to_dict()
+                half_life = 7 * 86400.0
+                weights = np.asarray(
+                    [np.exp(-(int(event.timestamp) - last_seen[item]) / half_life)
+                     if item in last_seen else 0.0 for item in available],
+                    dtype=float,
+                )
+            if not np.isfinite(weights).all() or weights.sum() <= 0:
+                probabilities = None
+            else:
+                # Retain support for static-catalog items without history.
+                weights = weights + 1e-12
+                probabilities = weights / weights.sum()
+        negatives = rng.choice(len(available), sample_size, replace=False, p=probabilities)
         negatives = [available[int(index)] for index in negatives]
         negative_counts.append(len(negatives))
         for item, label in [(event.item, 1), *[(item, 0) for item in negatives]]:
@@ -118,9 +178,13 @@ def sampled_candidate_log(
     result.attrs["candidate_protocol"] = {
         "name": "sampled_unseen_item_discrimination",
         "catalog_protocol": catalog_protocol,
-        "future_catalog_items_excluded": catalog_protocol == "historical_seen_items",
+        "future_catalog_items_excluded": True,
+        "static_catalog_validated": catalog_protocol == "static_catalog",
         "requested_negatives": int(n_negatives),
         "mean_actual_negatives": float(np.mean(negative_counts)) if negative_counts else 0.0,
+        "sampling": sampling,
+        "candidate_catalog": "cohort" if catalog_protocol == "historical_seen_items" else "full",
+        "sampling_weights_source": "pre_query_snapshot" if sampling != "uniform" else None,
         "max_queries": int(max_queries),
         "item_pool_size": int(len(available_items)),
         "declared_item_count": int(n_items),

@@ -30,6 +30,29 @@ def _linear_model(frame, columns, categorical_columns, random_state=17):
     return make_pipeline(prep, LogisticRegression(C=0.1, max_iter=250, solver="liblinear", random_state=random_state))
 
 
+def budgeted_candidate_order(candidates):
+    """Return a deterministic, family-balanced candidate order.
+
+    Generated names use ``<entity/group>__...``.  Round-robinning sorted
+    families prevents a large window/aggregation family from consuming the
+    entire budget while retaining stable, auditable ordering.
+    """
+    unique = list(dict.fromkeys(candidates))
+    families = {}
+    for column in unique:
+        family = column.split("__", 1)[0]
+        families.setdefault(family, []).append(column)
+    for values in families.values():
+        values.sort()
+    ordered = []
+    for position in range(max((len(values) for values in families.values()), default=0)):
+        for family in sorted(families):
+            values = families[family]
+            if position < len(values):
+                ordered.append(values[position])
+    return ordered
+
+
 def forward_select(
     train,
     select,
@@ -43,7 +66,7 @@ def forward_select(
     selection_interval="select",
 ):
     """Greedily select candidates with auditable per-step validation records."""
-    candidate_pool = list(dict.fromkeys(candidates))
+    candidate_pool = budgeted_candidate_order(candidates)
     if max_candidates is not None:
         if max_candidates <= 0:
             raise ValueError("max_candidates must be positive or None")

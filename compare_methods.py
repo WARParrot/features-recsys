@@ -66,14 +66,23 @@ def _code_revision():
         return None
 
 
-def _source_tree_hash():
-    """Hash the source/config files when a Git revision is unavailable."""
-    root = Path(__file__).resolve().parent
+def _source_tree_hash(root=None):
+    """Hash tracked source/config inputs, excluding runtime and build outputs.
+
+    The manifest intentionally covers only the package's top-level Python modules
+    and dependency/configuration files. Results, caches, editable-install metadata,
+    virtual environments, and arbitrary nested files must not change provenance for
+    the same source snapshot.
+    """
+    root = Path(root) if root is not None else Path(__file__).resolve().parent
     files = sorted(
-        path for pattern in ("*.py", "*.toml", "*.lock", "*.txt")
-        for path in root.rglob(pattern)
-        if path.is_file() and ".venv" not in path.parts and "__pycache__" not in path.parts
+        path for path in root.iterdir()
+        if path.is_file() and (
+            path.suffix in {".py", ".toml", ".lock"}
+            or path.name in {"requirements.txt", "requirements.lock"}
+        )
     )
+    files.extend(sorted((root / "tests").glob("test_*.py")) if (root / "tests").is_dir() else [])
     digest = hashlib.sha256()
     manifest = []
     for path in files:
@@ -133,6 +142,11 @@ def main():
     parser.add_argument("--watch-threshold", type=float, default=50.0)
     parser.add_argument("--forward-max-candidates", type=int, default=60)
     parser.add_argument("--forward-steps", type=int, default=8)
+    parser.add_argument("--history-mode", choices=("prequential", "role_frozen"), default="role_frozen")
+    parser.add_argument("--candidate-n-negatives", type=int, default=99)
+    parser.add_argument("--candidate-max-queries", type=int, default=400)
+    parser.add_argument("--candidate-sampling", choices=("uniform", "popularity", "recent"), default="uniform")
+    parser.add_argument("--candidate-catalog", choices=("cohort", "full"), default="cohort")
     parser.add_argument(
         "--max-impressions",
         type=int,
@@ -164,6 +178,8 @@ def main():
         parser.error("--n-events must be positive")
     if args.forward_max_candidates <= 0 or args.forward_steps <= 0:
         parser.error("forward search limits must be positive")
+    if args.candidate_n_negatives < 0 or args.candidate_max_queries <= 0:
+        parser.error("candidate limits are invalid")
     seeds = tuple(int(value.strip()) for value in args.seeds.split(",") if value.strip())
     if not seeds:
         parser.error("--seeds must contain at least one integer")
@@ -184,6 +200,11 @@ def main():
                 frame, seeds=seeds, n_folds=args.folds, dataset="kion",
                 forward_max_candidates=args.forward_max_candidates,
                 forward_steps=args.forward_steps,
+                history_mode=args.history_mode,
+                candidate_n_negatives=args.candidate_n_negatives,
+                candidate_max_queries=args.candidate_max_queries,
+                candidate_sampling=args.candidate_sampling,
+                candidate_catalog=args.candidate_catalog,
             )
             dataset = "kion"
         elif args.mind_root:
@@ -198,6 +219,11 @@ def main():
                 frame, seeds=seeds, n_folds=args.folds, dataset="mind",
                 forward_max_candidates=args.forward_max_candidates,
                 forward_steps=args.forward_steps,
+                history_mode=args.history_mode,
+                candidate_n_negatives=args.candidate_n_negatives,
+                candidate_max_queries=args.candidate_max_queries,
+                candidate_sampling=args.candidate_sampling,
+                candidate_catalog=args.candidate_catalog,
             )
             dataset = "mind"
         else:
@@ -207,6 +233,11 @@ def main():
                     seeds=(seed,), n_folds=args.folds, dataset="synthetic",
                     forward_max_candidates=args.forward_max_candidates,
                     forward_steps=args.forward_steps,
+                    history_mode=args.history_mode,
+                    candidate_n_negatives=args.candidate_n_negatives,
+                    candidate_max_queries=args.candidate_max_queries,
+                    candidate_sampling=args.candidate_sampling,
+                    candidate_catalog=args.candidate_catalog,
                 )[0]
                 for seed in seeds
             ]
@@ -222,6 +253,11 @@ def main():
                 frame, seeds=(seed,), n_folds=args.folds, dataset="kion",
                 forward_max_candidates=args.forward_max_candidates,
                 forward_steps=args.forward_steps,
+                history_mode=args.history_mode,
+                candidate_n_negatives=args.candidate_n_negatives,
+                candidate_max_queries=args.candidate_max_queries,
+                candidate_sampling=args.candidate_sampling,
+                candidate_catalog=args.candidate_catalog,
             )[0]
             for seed in seeds
         ]
@@ -264,18 +300,32 @@ def main():
             "watch_threshold": args.watch_threshold,
             "forward_max_candidates": args.forward_max_candidates,
             "forward_steps": args.forward_steps,
+            "history_mode": args.history_mode,
+            "candidate_n_negatives": args.candidate_n_negatives,
+            "candidate_max_queries": args.candidate_max_queries,
+            "candidate_sampling": args.candidate_sampling,
+            "candidate_catalog": args.candidate_catalog,
             "max_impressions": args.max_impressions,
             "strict_mind_metadata": args.strict_mind_metadata,
             "mind_protocol": args.mind_protocol,
             "evaluation": args.evaluation,
             "folds": args.folds if args.evaluation == "rolling" else None,
             "protocol_version": 4,
+            "rolling_protocol_version": 5 if args.evaluation == "rolling" else None,
             "protocol_notes": {
                 "kion_candidate_protocol": "selected-cohort historical catalog sampled unseen-item discrimination",
                 "kion_feedback_semantics": "pair-aggregated observed watch record; not click/impression CTR",
                 "primary_comparison": "auto_gain versus manual",
                 "primary_ranking_estimand": "query_weighted_macro_mean; user-cluster bootstrap preserves query counts",
                 "uncertainty_unit": "user_cluster",
+                "history_mode": args.history_mode,
+                "history_semantics": "prefix before each role, frozen within role when role_frozen",
+                "candidate_sensitivity": {
+                    "n_negatives": args.candidate_n_negatives,
+                    "max_queries": args.candidate_max_queries,
+                    "sampling": args.candidate_sampling,
+                    "catalog": args.candidate_catalog,
+                },
             },
             "data_summary": _data_summary(results),
             "config_grid": CONFIG_GRID,

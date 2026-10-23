@@ -38,11 +38,48 @@ def test_kion_sampling_retains_complete_user_history(tmp_path):
     assert "is_positive_watch" in frame
 
 
-def test_kion_rejects_incomplete_final_row(tmp_path):
-    bad = tmp_path / "truncated.csv"
-    bad.write_text("user_id,item_id,last_watch_dt,total_dur,watched_pct\n1,2,2021-01-01,10,\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="incomplete final row"):
+def test_kion_allows_missing_watch_percentage_in_last_row(tmp_path):
+    interactions, users, items = _write_fixture(tmp_path)
+    frame = pd.read_csv(interactions)
+    frame.loc[frame.index[-1], "watched_pct"] = None
+    frame.to_csv(interactions, index=False)
+
+    loaded = load_kion(interactions, users, items)
+
+    assert loaded.iloc[-1]["watched_pct"] == 0.0
+    assert loaded.iloc[-1]["binary_label"] == 0
+
+
+def test_kion_rejects_missing_required_values_and_malformed_inputs(tmp_path):
+    bad = tmp_path / "bad.csv"
+    pd.DataFrame(
+        {
+            "user_id": [1], "item_id": [None], "last_watch_dt": ["2021-01-01"],
+            "watched_pct": [50],
+        }
+    ).to_csv(bad, index=False)
+    with pytest.raises(ValueError, match="missing required values"):
         load_kion(bad)
+
+    malformed = tmp_path / "malformed.csv"
+    pd.DataFrame(
+        {
+            "user_id": [1], "item_id": [2], "last_watch_dt": ["not-a-date"],
+            "watched_pct": [50],
+        }
+    ).to_csv(malformed, index=False)
+    with pytest.raises(ValueError, match="invalid timestamps"):
+        load_kion(malformed)
+
+    bad_watch = tmp_path / "bad-watch.csv"
+    pd.DataFrame(
+        {
+            "user_id": [1], "item_id": [2], "last_watch_dt": ["2021-01-01"],
+            "watched_pct": ["not-a-number"],
+        }
+    ).to_csv(bad_watch, index=False)
+    with pytest.raises(ValueError, match="watched_pct contains non-numeric"):
+        load_kion(bad_watch)
 
 
 def test_kion_zip_input_and_missing_columns(tmp_path):

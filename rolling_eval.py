@@ -32,6 +32,7 @@ from metrics import (
 
 
 _AUC_BOOTSTRAP_REPLICATES = 1000
+ROLLING_PROTOCOL_VERSION = 5
 ROLLING_AUC_UNCERTAINTY = {
     "estimand": "pooled_event_level_auc",
     "unit": "user_cluster_resampling",
@@ -39,23 +40,27 @@ ROLLING_AUC_UNCERTAINTY = {
     "effect_interval": "paired_percentile_95",
     "replicates": _AUC_BOOTSTRAP_REPLICATES,
     "primary_comparison": "auto_gain_minus_manual",
+    "conditional_on": ["fitted_models", "feature_selection", "temporal_fold"],
+    "excludes": ["retraining_variability", "selection_variability", "temporal_shift"],
 }
 
 
-def _rolling_features(log, source_mask=None):
-    baseline = build_baseline_features(log, source_mask=source_mask)
+def _rolling_features(log, source_mask=None, source_until=None):
+    baseline = build_baseline_features(log, source_mask=source_mask, source_until=source_until)
     feedback_target = "is_positive_watch" if "is_positive_watch" in log else "is_click"
     specs = [
         spec for spec in enumerate_specs(feedback_target=feedback_target)
         if set(spec["keys"]).issubset(log.columns)
     ]
-    auto = compute_specs(log, specs, source_mask=source_mask)
-    decay = build_decay_features(log, source_mask=source_mask)
+    auto = compute_specs(log, specs, source_mask=source_mask, source_until=source_until)
+    decay = build_decay_features(log, source_mask=source_mask, source_until=source_until)
     return baseline, auto, decay, specs
 
 
 def _ranking_result(
-    dataset, log, test, models, specs, fold_seed, source_log=None
+    dataset, log, test, models, specs, fold_seed, source_log=None,
+    candidate_n_negatives=99, candidate_max_queries=400,
+    candidate_sampling="uniform", candidate_catalog="cohort", item_catalog=None,
 ):
     source_log = log if source_log is None else source_log
     if dataset == "mind":
@@ -66,10 +71,13 @@ def _ranking_result(
         ranking_log = sampled_candidate_log(
             test,
             source_log,
-            int(log["item"].nunique()),
+            int((log["item"].nunique() if candidate_catalog == "cohort" else len(item_catalog))),
+            n_negatives=candidate_n_negatives,
+            max_queries=candidate_max_queries,
             seed=fold_seed,
-            item_catalog=log,
-            catalog_protocol="historical_seen_items",
+            item_catalog=log if candidate_catalog == "cohort" else item_catalog,
+            catalog_protocol="historical_seen_items" if candidate_catalog == "cohort" else "static_catalog",
+            sampling=candidate_sampling,
         )
         _, ranking_features = candidate_features(
             source_log, ranking_log, specs=specs, decay_builder=build_decay_features
@@ -78,11 +86,14 @@ def _ranking_result(
 
     rankings = {}
     for name, (model, feature_columns, category_columns, score_fn) in models.items():
-        scores = (
-            score_fn(model, ranking_features, feature_columns)
-            if score_fn is not None
-            else predict_proba(model, ranking_features, feature_columns, category_columns)
-        )
+        if ranking_features.empty:
+            scores = np.empty(0, dtype=float)
+        else:
+            scores = (
+                score_fn(model, ranking_features, feature_columns)
+                if score_fn is not None
+                else predict_proba(model, ranking_features, feature_columns, category_columns)
+            )
         rankings[name] = scorer(
             model,
             ranking_log,
@@ -121,10 +132,27 @@ def _ranking_result(
     return rankings, ranking_log
 
 
-def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, forward_steps=8):
+def _fold_features(log, parts, history_mode):
     source_mask = np.ones(len(log), dtype=bool)
     source_mask[parts["test"]] = False
-    baseline, auto, decay, specs = _rolling_features(log, source_mask=source_mask)
+    if history_mode == "prequential":
+        return _rolling_features(log, source_mask=source_mask)
+    blocks = [[], [], []]
+    for positions in parts.values():
+        cutoff = log.iloc[positions]["timestamp"].min()
+        values = _rolling_features(
+            log,
+            source_mask=log["timestamp"].to_numpy() < cutoff,
+            source_until=cutoff,
+        )
+        for block, features in zip(blocks, values[:3]):
+            block.append(features.iloc[positions])
+    return (*(pd.concat(block).sort_index() for block in blocks), values[3])
+
+
+def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, forward_steps=8,
+                 history_mode="prequential", **candidate_options):
+    baseline, auto, decay, specs = _fold_features(log, parts, history_mode)
     categorical = [column for column in CATEGORICAL_FEATURES if column in log.columns]
     manual_columns = [
         column for column in BASELINE_FEATURES + categorical
@@ -236,6 +264,7 @@ def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, for
         ranking_specs,
         state,
         source_log=log.iloc[: int(parts["test"][0])].copy(),
+        **candidate_options,
     )
     ranking_metrics = {
         f"{name}_candidate_{metric}10": result[key]
@@ -258,6 +287,16 @@ def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, for
 
     return {
         "fold": fold,
+        "rolling_protocol_version": ROLLING_PROTOCOL_VERSION,
+        "history_mode": history_mode,
+        "history_metadata": {
+            role: {
+                "prefix_end_exclusive": int(positions[0]),
+                "prefix_end_timestamp": int(log.iloc[positions[0]]["timestamp"]),
+                "frozen_within_role": history_mode == "role_frozen" or role == "test",
+            }
+            for role, positions in parts.items()
+        },
         "seed": seed,
         "selected": selected,
         "ranking_queries": int(ranking_log["query_id"].nunique()) if not ranking_log.empty else 0,
@@ -288,6 +327,8 @@ def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, for
         "event_auc_uncertainty": event_auc_uncertainty,
         "event_auc_estimand": ROLLING_AUC_UNCERTAINTY["estimand"],
         "event_auc_uncertainty_unit": ROLLING_AUC_UNCERTAINTY["unit"],
+        "event_auc_uncertainty_conditional_on": "fixed_fitted_models_features_and_observed_test_population",
+        "event_auc_comparison": "paired_auto_gain_minus_manual",
         **ranking_metrics,
         "ranking_query_metrics": {
             name: scores.get("query_metrics", {}) for name, scores in rankings.items()
@@ -304,14 +345,39 @@ def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, for
         "forward_features": len(forward_added),
         "top_gain": list(gains.head(5).index),
         "forward_history": forward_history,
+        "candidate_configuration": {
+            "n_negatives": int(candidate_options.get("candidate_n_negatives", 99)),
+            "max_queries": int(candidate_options.get("candidate_max_queries", 400)),
+            "sampling": candidate_options.get("candidate_sampling", "uniform"),
+            "catalog": candidate_options.get("candidate_catalog", "cohort"),
+        },
     }
 
 
 def run_rolling_frame(
     frame, seed=42, n_folds=3, dataset="synthetic",
     forward_max_candidates=60, forward_steps=8,
+    history_mode="role_frozen", candidate_n_negatives=99, candidate_max_queries=400,
+    candidate_sampling="uniform", candidate_catalog="cohort", item_catalog=None,
 ):
-    """Evaluate all feature strategies on expanding chronological folds."""
+    """Evaluate folds; role_frozen uses only the prefix before each role."""
+    if history_mode not in {"prequential", "role_frozen"}:
+        raise ValueError("history_mode must be prequential or role_frozen")
+    if candidate_sampling not in {"uniform", "popularity", "recent"}:
+        raise ValueError("invalid candidate_sampling")
+    if candidate_catalog not in {"cohort", "full"}:
+        raise ValueError("candidate_catalog must be cohort or full")
+    for name, value, minimum in (("candidate_n_negatives", candidate_n_negatives, 0),
+                                 ("candidate_max_queries", candidate_max_queries, 1)):
+        if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)) or value < minimum:
+            raise ValueError(f"{name} must be an integer >= {minimum}")
+    if candidate_catalog == "full":
+        from candidate_eval import validate_static_catalog
+        item_catalog = validate_static_catalog(item_catalog)
+    protocol = dict(history_mode=history_mode, candidate_n_negatives=int(candidate_n_negatives),
+                    candidate_max_queries=int(candidate_max_queries), candidate_sampling=candidate_sampling,
+                    candidate_catalog=candidate_catalog, static_catalog_validated=candidate_catalog == "full",
+                    candidate_parameters_applied=dataset != "mind", ranking_history="frozen_prefix_before_test")
     source_splits = tuple(frame.attrs.get("mind_metadata", {}).get("splits", ()))
     log, folds = rolling_time_splits(frame, n_folds=n_folds)
     results = [
@@ -319,6 +385,9 @@ def run_rolling_frame(
             log, parts, seed, fold, dataset,
             forward_max_candidates=forward_max_candidates,
             forward_steps=forward_steps,
+            history_mode=history_mode, candidate_n_negatives=candidate_n_negatives,
+            candidate_max_queries=candidate_max_queries, candidate_sampling=candidate_sampling,
+            candidate_catalog=candidate_catalog, item_catalog=item_catalog,
         )
         for fold, parts in enumerate(folds)
     ]
@@ -329,6 +398,9 @@ def run_rolling_frame(
         "folds": results,
         "summary": summary.reset_index().to_dict("records"),
         "evaluation": "rolling_temporal",
+        "rolling_protocol_version": ROLLING_PROTOCOL_VERSION,
+        "rolling_protocol": protocol,
+        "metadata": {"rolling_protocol_version": ROLLING_PROTOCOL_VERSION, **protocol},
         "evaluation_uncertainty": {"event_level_auc": ROLLING_AUC_UNCERTAINTY.copy()},
         "forward_search": {"max_candidates": forward_max_candidates, "steps": forward_steps},
         "mind_metadata": (
@@ -368,12 +440,17 @@ def summarize_rolling_runs(runs):
 def run_rolling_many(
     frame, seeds=(42,), n_folds=3, dataset="synthetic",
     forward_max_candidates=60, forward_steps=8,
+    history_mode="role_frozen", candidate_n_negatives=99, candidate_max_queries=400,
+    candidate_sampling="uniform", candidate_catalog="cohort", item_catalog=None,
 ):
     return [
         run_rolling_frame(
             frame, seed=seed, n_folds=n_folds, dataset=dataset,
             forward_max_candidates=forward_max_candidates,
             forward_steps=forward_steps,
+            history_mode=history_mode, candidate_n_negatives=candidate_n_negatives,
+            candidate_max_queries=candidate_max_queries, candidate_sampling=candidate_sampling,
+            candidate_catalog=candidate_catalog, item_catalog=item_catalog,
         )
         for seed in seeds
     ]

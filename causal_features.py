@@ -67,6 +67,31 @@ class CausalIndex:
             values[~active] = 0.0
         return values[self.order], known[self.order]
 
+    def recency(self, source_mask=None, source_until=None):
+        """Seconds since the most recent prior active event in each key group.
+
+        Equal timestamps are atomic, and inactive rows never update history.
+        Zero denotes no prior event, keeping the feature finite and model-safe.
+        """
+        _, known = self._known_values(None, source_mask, source_until)
+        result_sorted = np.zeros(len(self.base), dtype=np.float64)
+        for start, end in zip(self.boundaries[:-1], self.boundaries[1:]):
+            last_time = None
+            position = start
+            while position < end:
+                batch_end = position + 1
+                while batch_end < end and self.times[batch_end] == self.times[position]:
+                    batch_end += 1
+                current_time = self.times[position]
+                if last_time is not None:
+                    result_sorted[position:batch_end] = current_time - last_time
+                if np.any(known[position:batch_end] != 0):
+                    last_time = current_time
+                position = batch_end
+        result = np.empty(len(self.base), dtype=np.float64)
+        result[self.order] = result_sorted
+        return result
+
     def aggregate(self, window=None, agg="count", target=None, source_mask=None, source_until=None):
         if window is not None and (not isinstance(window, (int, np.integer)) or window <= 0):
             raise ValueError("window must be a positive integer or None")

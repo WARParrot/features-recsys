@@ -19,6 +19,7 @@ test = ["pytest==8.3.4"]
 
 [project.scripts]
 recsys-compare = "compare_methods:main"
+recsys-validate-results = "validate_protocol:main"
 
 [tool.setuptools]
 py-modules = [
@@ -40,6 +41,7 @@ py-modules = [
   "ranking_references",
   "rolling_eval",
   "run_experiments",
+  "validate_protocol",
 ]
 
 [tool.pytest.ini_options]

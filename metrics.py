@@ -101,6 +101,128 @@ def paired_bootstrap_mean_ci(left, right, seed=17, n_boot=1000, alpha=0.05):
     return bootstrap_mean_ci(left - right, seed=seed, n_boot=n_boot, alpha=alpha)
 
 
+def cluster_bootstrap_auc_comparison(
+    y_true, scores_by_name, clusters, baseline="manual", seed=17,
+    n_boot=1000, alpha=0.05,
+):
+    """Estimate pooled event-level AUCs and paired differences via user bootstrap.
+
+    Each replicate samples users with replacement and gives every event the
+    multiplicity of its user's draw. AUC is then calculated over all sampled
+    events (micro/event-weighted), rather than averaging per-user AUCs. All
+    models use the same user draws, so each delta from the baseline is paired.
+    Replicates without both label classes are omitted from percentile intervals.
+    """
+    labels = np.asarray(y_true)
+    clusters = np.asarray(clusters)
+    if labels.ndim != 1 or clusters.ndim != 1:
+        raise ValueError("AUC bootstrap inputs must be one-dimensional")
+    if len(labels) != len(clusters):
+        raise ValueError("AUC bootstrap inputs must have the same length")
+    if not scores_by_name:
+        raise ValueError("at least one named score vector is required")
+    if baseline not in scores_by_name:
+        raise ValueError(f"baseline {baseline!r} is missing from scores_by_name")
+    classes = np.unique(labels)
+    if len(labels) == 0 or len(classes) != 2:
+        raise ValueError("event-level AUC requires both label classes")
+    if not 0 < alpha < 1:
+        raise ValueError("alpha must be between 0 and 1")
+    if int(n_boot) <= 0:
+        raise ValueError("n_boot must be positive")
+
+    scores = {}
+    for name, values in scores_by_name.items():
+        values = np.asarray(values, dtype=np.float64)
+        if values.ndim != 1 or len(values) != len(labels):
+            raise ValueError("score vectors must have the same length as labels")
+        if not np.isfinite(values).all():
+            raise ValueError("score vectors must contain only finite values")
+        scores[name] = values
+    if np.asarray(labels).dtype.kind in "biufc" and not np.isfinite(labels).all():
+        raise ValueError("labels must contain only finite values")
+
+    cluster_ids, cluster_codes = np.unique(clusters, return_inverse=True)
+    if len(cluster_ids) == 0:
+        raise ValueError("at least one user cluster is required")
+    estimates = {
+        name: float(roc_auc_score(labels, values))
+        for name, values in scores.items()
+    }
+    # Scores do not change across replicates; sort and group ties only once.
+    score_groups = {}
+    for name, values in scores.items():
+        order = np.argsort(values, kind="mergesort")
+        sorted_values = values[order]
+        sorted_group_ids = np.cumsum(
+            np.r_[True, sorted_values[1:] != sorted_values[:-1]]
+        ) - 1
+        group_ids = np.empty(len(values), dtype=np.int64)
+        group_ids[order] = sorted_group_ids
+        score_groups[name] = (group_ids, int(sorted_group_ids[-1]) + 1)
+
+    positive = labels == classes[1]
+    negative = labels == classes[0]
+    rng = np.random.default_rng(seed)
+    bootstraps = {name: [] for name in scores}
+    bootstrap_deltas = {name: [] for name in scores}
+    for _ in range(int(n_boot)):
+        sampled = rng.integers(0, len(cluster_ids), size=len(cluster_ids))
+        multiplicities = np.bincount(sampled, minlength=len(cluster_ids))
+        weights = multiplicities[cluster_codes]
+        positive_weights = weights * positive
+        negative_weights = weights * negative
+        if positive_weights.sum() <= 0 or negative_weights.sum() <= 0:
+            continue
+        replicate = {}
+        for name, (group_ids, n_groups) in score_groups.items():
+            positive_by_score = np.bincount(
+                group_ids, weights=positive_weights, minlength=n_groups
+            )
+            negative_by_score = np.bincount(
+                group_ids, weights=negative_weights, minlength=n_groups
+            )
+            negative_below = np.cumsum(negative_by_score) - negative_by_score
+            numerator = np.sum(
+                positive_by_score * (negative_below + 0.5 * negative_by_score)
+            )
+            denominator = positive_by_score.sum() * negative_by_score.sum()
+            replicate[name] = float(numerator / denominator)
+        for name, value in replicate.items():
+            bootstraps[name].append(value)
+            bootstrap_deltas[name].append(value - replicate[baseline])
+
+    def percentile(values):
+        if not values:
+            return [float("nan"), float("nan")]
+        return [
+            float(np.quantile(values, alpha / 2)),
+            float(np.quantile(values, 1 - alpha / 2)),
+        ]
+
+    valid = len(bootstraps[baseline])
+    return {
+        "estimand": "pooled_event_level_auc",
+        "unit": "user_cluster_resampling",
+        "baseline": baseline,
+        "observations": int(len(labels)),
+        "clusters": int(len(cluster_ids)),
+        "requested_replicates": int(n_boot),
+        "valid_replicates": valid,
+        "metrics": {
+            name: {
+                "estimate": estimates[name],
+                "ci95": percentile(bootstraps[name]),
+                f"delta_vs_{baseline}": {
+                    "estimate": float(estimates[name] - estimates[baseline]),
+                    "ci95": percentile(bootstrap_deltas[name]),
+                },
+            }
+            for name in scores
+        },
+    }
+
+
 def auc(y_true, scores):
     y_true = np.asarray(y_true)
     scores = np.asarray(scores)

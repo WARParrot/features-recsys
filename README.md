@@ -10,12 +10,20 @@ KION соответствует исходной постановке про use
 watch feedback, user demographics и item metadata. MIND остаётся отдельным
 logged-impression benchmark для проверки ranking на реальных candidate sets; KION sampled metrics не являются таким ranking benchmark.
 
-KION используется для основного исследования автоматического feature search:
-целью является high-watch event (`watched_pct >= 50%`), а ranking выполняется
-против historical-catalog sampled unseen items. В KION нет показов/clicks: это
-offline positive-watch discrimination, а не CTR или causal product ranking. Это sampled unseen-item
-**discrimination** protocol, а не logged exposure evaluation и не доказательство
-production ranking lift. Для ранжирования внутри реально показанного набора
+KION используется для основного исследования автоматического feature search.
+Цель — `watched_pct >= 50.0` (порог включительный): это бинарная метка на
+наблюдаемой агрегированной user-item watch-записи; пропуск `watched_pct`
+адаптер относит к нулевому классу. `last_watch_dt` имеет дневную точность и
+отражает последнюю дату просмотра, а не порядок событий внутри дня. Поэтому
+KION event-level AUC — классификация high-watch против lower-watch наблюдаемых
+пар, не CTR, не next-event и не prediction по impression-логам.
+
+KION sampled ranking сравнивает held-out high-watch positive с 99 случайными
+unseen negatives (без возвращения) из selected-cohort historical catalog:
+item должен быть впервые замечен строго до query timestamp и не встречаться
+ранее у этого user. Положительные запросы с item, ещё не доступным исторически,
+исключаются. Это query-weighted offline sampled discrimination, не logged
+exposure evaluation и не production candidate set. Для ранжирования внутри реально показанного набора
 MIND `behaviors.tsv`
 содержит impression ID, anonymous user, время, историю кликов и список показанных
 news с labels `0/1`; `news.tsv` содержит category/subcategory. Поэтому MIND
@@ -101,7 +109,7 @@ For stronger claims, use expanding rolling temporal folds:
 python compare_methods.py --evaluation rolling --folds 3 --seeds 42,43,44 --n-events 30000 --json
 ```
 
-The default `rolling` mode uses expanding temporal folds. The `single_split` mode remains available as an exploratory compatibility path because forward selection and method choice reuse one selection interval. The primary comparison is always `auto_gain` versus `manual`; `selected` is descriptive only and must not be treated as an unbiased primary endpoint. Results are query-weighted ranking means; cluster bootstrap resampling preserves each user's query count. In the KION historical-catalog protocol, positive queries whose item was not observed before the query are excluded from ranking evaluation; the JSON records `skipped_positive_queries`. Such ranking results must be recomputed after this protocol correction and are exploratory until the candidate protocol is locked.
+The default `rolling` mode uses expanding temporal folds. The `single_split` mode remains an exploratory compatibility path because forward selection and method choice reuse one selection interval. The primary comparison is `auto_gain` versus `manual`; `selected` is descriptive only. Ranking means are query-weighted; in the canonical JSON, `ranking_ndcg10_uncertainty` contains separate per-fold/seed user-cluster bootstrap intervals for sampled NDCG@10, not event-level AUC uncertainty. The canonical protocol-v4 JSON predates the event-level AUC bootstrap change: it has no `event_auc_uncertainty`, and that uncertainty was not recomputed for this checked-in canonical run. New rolling outputs from the current code may contain `event_auc_uncertainty` for pooled event-level AUC, but those outputs are new evaluations and are not fields of the canonical artifact. The canonical protocol-v4 JSON applies the historical-availability filter and records `skipped_positive_queries`; older ranking scores from before this filter are superseded. Even protocol-v4 KION ranking remains a sampled-discrimination diagnostic, not evidence about logged impressions or production ranking.
 
 The default combined protocol prefixes query IDs by source split, then performs the same timestamp-group chronological split and is reported as `combined_temporal`. The `official_train_dev` protocol keeps train and dev separate: train is divided chronologically into internal train/select/valid roles, and dev is held out for final evaluation. Neither mode should be confused with an official leaderboard submission.
 
@@ -119,7 +127,7 @@ The lock was verified with Python 3.11.15; use a compatible Python 3.11 environm
 
 ## Current Results
 
-The current protocol-v4 result is `results/kion_50k_protocol_v4.json` (three seeds, 50k selected users, two folds, with invalid positive queries excluded). `results/kion_50k_corrected.json` is pre-candidate-fix provenance only. The 10k corrected JSON is retained as protocol-validation evidence; the legacy 50k JSON is historical only. Regenerate reports in the pinned environment before making comparisons:
+The canonical result is [`results/kion_50k_protocol_v4.json`](results/kion_50k_protocol_v4.json): 50k selected users, 285,343 interactions, three seeds, two folds, and 2,187 fold×seed ranking queries. Across six cells, test AUC is 0.65271 (manual) vs 0.65408 (`auto_gain`); sampled NDCG@10 is 0.12418 vs 0.34345, while decayed popularity is 0.52138. These are means across six fold/seed summaries, not pooled estimates; the canonical JSON has ranking uncertainty for NDCG@10 but no event-level AUC uncertainty. Its provenance snapshot is code revision `6f8d386d8460be83cc061f5075a714ec32ac3f0c` and source-tree hash `c77188b69f3d65af97879d48dcecc1b5554fb9b780cbabdb6f374a865903fe13`. The current checkout is dirty (`HEAD aaed1436fb373e09615d35bd306489362e69a5b4`) and its current source-tree hash `b2ff099643868b66c82edad9988622faabdbc7d3d4672863f7e43f23024ce98d` does not match that snapshot. `kion_50k_corrected.json` is superseded pre-v4 provenance; `kion_10k_corrected.json` is protocol validation only; `kion_50k_legacy_pre_correction.json` and the synthetic smoke table in [historical-results.md](historical-results.md) are historical, non-comparable artifacts. See [REPORT.md](REPORT.md) for target semantics, estimands, uncertainty boundaries, and limitations.
 
 ```bash
 python compare_methods.py --evaluation rolling --folds 3 --seeds 42,43,44 --n-events 30000 --json > rolling.json

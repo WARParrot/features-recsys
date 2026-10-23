@@ -27,7 +27,19 @@ from ranking_references import score_reference_rankings
 from metrics import (
     query_weighted_cluster_bootstrap_mean_ci,
     paired_query_weighted_cluster_bootstrap_mean_ci,
+    cluster_bootstrap_auc_comparison,
 )
+
+
+_AUC_BOOTSTRAP_REPLICATES = 1000
+ROLLING_AUC_UNCERTAINTY = {
+    "estimand": "pooled_event_level_auc",
+    "unit": "user_cluster_resampling",
+    "interval": "percentile_95_user_cluster_bootstrap",
+    "effect_interval": "paired_percentile_95",
+    "replicates": _AUC_BOOTSTRAP_REPLICATES,
+    "primary_comparison": "auto_gain_minus_manual",
+}
 
 
 def _rolling_features(log, source_mask=None):
@@ -230,6 +242,19 @@ def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, for
         for name, result in rankings.items()
         for metric, key in (("ndcg", "ndcg10"), ("mrr", "mrr10"), ("recall", "recall10"))
     }
+    event_auc_uncertainty = None
+    if "user" in test.columns:
+        event_auc_uncertainty = cluster_bootstrap_auc_comparison(
+            test["binary_label"].to_numpy(),
+            {
+                "manual": predict_proba(manual_model, test, manual_columns, categorical),
+                "auto_gain": predict_proba(auto_model, test, top_auto),
+            },
+            test["user"].to_numpy(),
+            baseline="manual",
+            seed=state,
+            n_boot=_AUC_BOOTSTRAP_REPLICATES,
+        )
 
     return {
         "fold": fold,
@@ -260,6 +285,9 @@ def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, for
         "decay_test_auc": auc(decay_model, test, manual_columns + decay_columns, categorical),
         "linear_test_auc": logistic_auc(linear_model, test, manual_columns),
         "selected_test_auc": auc(selected_model, test, selected_columns, selected_categories),
+        "event_auc_uncertainty": event_auc_uncertainty,
+        "event_auc_estimand": ROLLING_AUC_UNCERTAINTY["estimand"],
+        "event_auc_uncertainty_unit": ROLLING_AUC_UNCERTAINTY["unit"],
         **ranking_metrics,
         "ranking_query_metrics": {
             name: scores.get("query_metrics", {}) for name, scores in rankings.items()
@@ -301,6 +329,7 @@ def run_rolling_frame(
         "folds": results,
         "summary": summary.reset_index().to_dict("records"),
         "evaluation": "rolling_temporal",
+        "evaluation_uncertainty": {"event_level_auc": ROLLING_AUC_UNCERTAINTY.copy()},
         "forward_search": {"max_candidates": forward_max_candidates, "steps": forward_steps},
         "mind_metadata": (
             summarize_mind_metadata(log, splits=source_splits)

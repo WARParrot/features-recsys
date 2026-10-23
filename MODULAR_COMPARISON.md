@@ -28,14 +28,18 @@ This directory now contains a modular, reproducible comparison pipeline.
 - `manual`: hand-designed baseline features + tuned LightGBM.
 - `auto_gain`: template-generated features ranked by training-only LightGBM gain.
 - `auto_forward`: greedy forward selection by selection AUC, using a regularized linear probe.
-- `decay`: baseline features augmented with exponential-decay counts/clicks.
+- `decay`: baseline features augmented with exponential-decay watch/click counts (KION watch semantics; MIND click semantics).
 - `linear`: regularized Logistic Regression on baseline features, compared with LightGBM.
 
-The primary real-data protocol is MIND/MIND-small. Its impression candidates are
-kept intact and evaluated with `score_logged_impressions`; the synthetic protocol
-continues to use `score_candidate_sets` with sampled unseen-item negatives as a
-diagnostic only. MIND `history` and news body/text are retained as data metadata but
-are not used as model features in the first feature-search comparison.
+The canonical real-data feature-search result is KION protocol v4 (see
+[`results/kion_50k_protocol_v4.json`](results/kion_50k_protocol_v4.json) and
+[`REPORT.md`](REPORT.md)). KION has no impressions: its event target is
+`watched_pct >= 50.0` on observed pair-aggregated watch rows, and sampled ranking
+is only historical-catalog unseen-item discrimination. MIND/MIND-small is a
+separate logged-impression benchmark: its impression candidates are kept intact
+and evaluated with `score_logged_impressions`. Synthetic sampled candidates are
+also diagnostic only. MIND `history` and news body/text are retained as metadata
+but are not model features in the first feature-search comparison.
 
 MIND supports two explicit protocols. `combined_temporal` (the default) combines requested source splits before chronological splitting. `official_train_dev` keeps train and dev separate, uses chronological train/select/valid partitions inside train, and reports dev as final held-out evaluation. The latter is benchmark-shaped but still not an official leaderboard submission.
 
@@ -45,12 +49,12 @@ Selection data chooses feature/model configurations. The later validation interv
 
 The artifact reports two different tasks and they must not be conflated:
 
-- `*_test_auc` is event-level click prediction on a chronological held-out interval.
-- `*_candidate_ndcg10`, `*_candidate_mrr10` and `*_candidate_recall10` are sampled unseen-item discrimination diagnostics in synthetic/KION paths. Each positive event is paired with historical-catalog unseen negatives; they are not impression-level metrics and do not represent the production candidate set.
+- KION `*_test_auc` is row-level ROC AUC for `watched_pct >= 50.0` versus lower-watch observed user-item records in a chronological held-out interval. Missing `watched_pct` is mapped to zero; this is not click prediction or an impression CTR. MIND's event AUC uses its click labels.
+- `*_candidate_ndcg10`, `*_candidate_mrr10` and `*_candidate_recall10` are query-weighted sampled unseen-item discrimination diagnostics in synthetic/KION paths. KION protocol v4 uses one held-out high-watch positive and 99 negatives sampled without replacement from items first observed strictly before the query, excluding items previously seen by that user; positive queries whose item was not historically available are omitted. This is not logged-impression ranking or the production candidate set.
 - MIND runs report the same metric names over logged impression candidates. They use
   the actual `query_id` groups from `behaviors.tsv` and do not add sampled negatives.
 
-The ranking output now includes three causal reference baselines:
+The ranking output includes point-in-time reference baselines:
 
 - `popularity_candidate_*`: cumulative item popularity before each query;
 - `decay_popularity_candidate_*`: seven-day exponentially decayed item popularity before each query;
@@ -76,7 +80,7 @@ Each fold selects features/configuration on its own selection interval, uses val
 
 Install dependencies with `python -m pip install -r requirements.lock`, then run `python -m pytest -q`. The lock was verified with Python 3.11.15. The test suite covers timestamp atomicity, snapshot masks, history replay for numeric and string IDs, split boundaries, candidate-label isolation, and causal popularity baselines.
 
-No current result table is checked in. Regenerate reports in the pinned environment with the rolling command above. The historical smoke table is retained in [historical-results.md](historical-results.md) for provenance only. Preserve the command, seed list, dataset size, dependency versions, and JSON output with any report.
+The canonical KION result is [`results/kion_50k_protocol_v4.json`](results/kion_50k_protocol_v4.json); its summary is the six fold/seed cells from 50k selected users. `results/kion_50k_corrected.json` is superseded pre-v4 provenance, the 10k JSON is protocol validation only, and `historical-results.md` contains a pre-correction synthetic smoke result—not KION evidence. Do not compare these older artifacts to protocol v4. Preserve the command, seed list, dataset size, dependency versions, and JSON output with any new report.
 
 Candidate-based evaluation is implemented in two explicitly separate modes: sampled
 historical-catalog unseen-item discrimination for synthetic/KION, and logged impression candidates

@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recsys-corrected-artifact"
+version = "0.1.0"
+description = "Causal temporal recommender-system feature comparison artifact"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+  "numpy==2.2.6",
+  "pandas==2.2.3",
+  "scikit-learn==1.6.1",
+  "lightgbm==4.6.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest==8.3.4"]
+
+[project.scripts]
+recsys-compare = "compare_methods:main"
+
+[tool.setuptools]
+py-modules = [
+  "auto_features",
+  "candidate_eval",
+  "causal_features",
+  "compare_methods",
+  "data",
+  "decay_features",
+  "experiment_contracts",
+  "feature_selectors",
+  "history",
+  "linear_model",
+  "metrics",
+  "mind_data",
+  "kion_data",
+  "models",
+  "pipeline",
+  "ranking_references",
+  "rolling_eval",
+  "run_experiments",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]

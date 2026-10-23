@@ -1,0 +1,1 @@
+elapsed=14:05.56 cpu=146% maxrss=840652KB

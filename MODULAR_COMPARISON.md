@@ -1,0 +1,86 @@
+# Modular comparison artifact
+
+This directory now contains a modular, reproducible comparison pipeline.
+
+## Modules
+
+| Module | Responsibility |
+|---|---|
+| `data.py` | Synthetic interaction log with preference drift and timestamp-safe splits |
+| `causal_features.py` | Reusable point-in-time indexes, window aggregates and exponential decay |
+| `decay_features.py` | Decay features as an alternative to hard windows |
+| `auto_features.py` | Template-based feature specs and candidate computation |
+| `feature_selectors.py` | Training-gain top-K and validation-forward selection |
+| `models.py` | LightGBM fit/predict interface |
+| `linear_model.py` | One-hot, regularized Logistic Regression alternative |
+| `pipeline.py` | Shared single-split experiment orchestration and comparison |
+| `rolling_eval.py` | Expanding rolling temporal evaluation |
+| `metrics.py` | Query-group ranking metrics |
+| `compare_methods.py` | CLI and multi-seed summaries |
+| `mind_data.py` | MIND/MIND-small TSV loader and logged-impression flattening |
+| `history.py` | Atomic timestamp-batch history replay |
+| `ranking_references.py` | Shared causal ranking baselines for all evaluation modes |
+| `experiment_contracts.py` | Result-shape and serialization validation |
+| `tests/` | Causality, snapshot, split and history checks |
+
+## Compared methods
+
+- `manual`: hand-designed baseline features + tuned LightGBM.
+- `auto_gain`: template-generated features ranked by training-only LightGBM gain.
+- `auto_forward`: greedy forward selection by selection AUC, using a regularized linear probe.
+- `decay`: baseline features augmented with exponential-decay counts/clicks.
+- `linear`: regularized Logistic Regression on baseline features, compared with LightGBM.
+
+The primary real-data protocol is MIND/MIND-small. Its impression candidates are
+kept intact and evaluated with `score_logged_impressions`; the synthetic protocol
+continues to use `score_candidate_sets` with sampled unseen-item negatives as a
+diagnostic only. MIND `history` and news body/text are retained as data metadata but
+are not used as model features in the first feature-search comparison.
+
+MIND supports two explicit protocols. `combined_temporal` (the default) combines requested source splits before chronological splitting. `official_train_dev` keeps train and dev separate, uses chronological train/select/valid partitions inside train, and reports dev as final held-out evaluation. The latter is benchmark-shaped but still not an official leaderboard submission.
+
+Selection data chooses feature/model configurations. The later validation interval is used for LightGBM early stopping, and test is held out for final reporting. Test rows are excluded from feature sources and ranking baselines, so the final metrics use a frozen pre-test snapshot rather than feedback from within the test interval.
+
+## Evaluation protocol
+
+The artifact reports two different tasks and they must not be conflated:
+
+- `*_test_auc` is event-level click prediction on a chronological held-out interval.
+- `*_candidate_ndcg10`, `*_candidate_mrr10` and `*_candidate_recall10` are sampled unseen-item discrimination diagnostics in synthetic/KION paths. Each positive event is paired with historical-catalog unseen negatives; they are not impression-level metrics and do not represent the production candidate set.
+- MIND runs report the same metric names over logged impression candidates. They use
+  the actual `query_id` groups from `behaviors.tsv` and do not add sampled negatives.
+
+The ranking output now includes three causal reference baselines:
+
+- `popularity_candidate_*`: cumulative item popularity before each query;
+- `decay_popularity_candidate_*`: seven-day exponentially decayed item popularity before each query;
+- `category_popularity_candidate_*`: cumulative category popularity before each query;
+- `user_item_ctr_candidate_*`: prior user-item positive-watch-rate baseline for KION; click-rate only where the source actually contains clicks.
+
+For MIND, these popularity baselines use string news IDs directly and remain causal.
+
+Synthetic candidate JSON records the sampling protocol, requested negatives, query cap, and actual query/row counts. MIND ranking uses `logged_impression_candidates` and does not introduce synthetic negatives.
+
+
+
+The default `rolling` protocol uses expanding temporal folds. `single_split` is retained as an explicitly exploratory compatibility mode because feature search and method choice reuse one selection interval.
+
+```bash
+python compare_methods.py --evaluation rolling --folds 3 --seeds 42,43,44 --n-events 30000 --json
+```
+
+Each fold selects features/configuration on its own selection interval, uses validation for LightGBM early stopping, and reports later test AUCs. Fold selection histories are retained in JSON.
+
+
+## Reproducibility status
+
+Install dependencies with `python -m pip install -r requirements.lock`, then run `python -m pytest -q`. The lock was verified with Python 3.11.15. The test suite covers timestamp atomicity, snapshot masks, history replay for numeric and string IDs, split boundaries, candidate-label isolation, and causal popularity baselines.
+
+No current result table is checked in. Regenerate reports in the pinned environment with the rolling command above. The historical smoke table is retained in [historical-results.md](historical-results.md) for provenance only. Preserve the command, seed list, dataset size, dependency versions, and JSON output with any report.
+
+Candidate-based evaluation is implemented in two explicitly separate modes: sampled
+historical-catalog unseen-item discrimination for synthetic/KION, and logged impression candidates
+for MIND. Only the latter supports an impression-level ranking claim. The MIND path
+is available through `python compare_methods.py --mind-root <extracted-mind-root>`.
+
+The causal index reuses sorting and time-window boundaries. A local smoke benchmark on 15k rows and 90 specs took about 4.1 seconds; this is not a distributed/production-scale benchmark.

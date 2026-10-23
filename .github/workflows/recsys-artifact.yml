@@ -1,0 +1,29 @@
+name: recsys-artifact
+
+on:
+  push:
+    paths:
+      - "recsys_corrected_artifact/**"
+      - ".github/workflows/recsys-artifact.yml"
+  pull_request:
+    paths:
+      - "recsys_corrected_artifact/**"
+      - ".github/workflows/recsys-artifact.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: recsys_corrected_artifact
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.lock
+      - run: python -m pip install --no-deps -e .
+      - run: python -m compileall -q .
+      - run: python -m pytest -q
+      - run: python compare_methods.py --evaluation single_split --n-events 500 --seeds 42 --json > /tmp/recsys-smoke.json

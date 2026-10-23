@@ -4,7 +4,7 @@
 
 This repository contains a **methodology-validity study**, not evidence of production lift. The current corrected KION result is `results/kion_50k_corrected.json`: a 50,000-user cohort, 285,343 retained interactions, three training seeds, and two expanding temporal folds. The run completed in 2:00:38 with peak RSS 2.53 GB. The 10k JSON remains a protocol-validation artifact; the legacy 50k JSON is historical only and must not be compared with the corrected protocol.
 
-The current conclusion is deliberately qualified: implementation-level point-in-time invariants pass; auto feature search shows a small AUC difference and a larger sampled-ranking difference, but popularity remains stronger and no production or causal claim follows.
+The current conclusion is deliberately qualified: implementation-level point-in-time invariants pass; after protocol-v4 candidate correction, auto feature search shows a small AUC difference and a larger sampled-ranking difference, but popularity remains stronger and no production or causal claim follows.
 
 ## 1. Research question and estimands
 
@@ -61,7 +61,7 @@ No method is recommended for deployment.
 | `results/kion_10k_corrected.json` | protocol validation | 10k selected users, one seed, two folds |
 | `results/kion_50k_legacy_pre_correction.json` | historical only | predates catalog/semantic/uncertainty corrections |
 
-The corrected 50k JSON contains package versions, command, source hashes, source-tree manifest/hash, thread settings, protocol metadata, split metadata, ranking query counts, per-query metrics, and query-weighted user-cluster intervals. When the checkout has no Git revision, `metadata.source_tree.sha256` and its file manifest provide immutable provenance for the source/config files included in the run. Existing pre-correction ranking JSON must not be used as evidence for H2; regenerate it after the candidate-protocol fix.
+The protocol-v4 50k JSON is `results/kion_50k_protocol_v4.json`: 50,000 selected users, 285,343 interactions, three seeds, two folds, 2,187 valid ranking queries, and 186 excluded positive queries. It contains package versions, command, source hashes, source-tree manifest/hash, thread settings, protocol metadata, split metadata, per-query metrics, and query-weighted user-cluster intervals. The prior `kion_50k_corrected.json` is retained as pre-correction provenance and must not be used for H2. When the checkout has no Git revision, `metadata.source_tree.sha256` and its file manifest provide immutable provenance for the source/config files included in the run.
 
 ## 6. Reproduction
 

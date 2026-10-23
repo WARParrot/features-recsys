@@ -119,7 +119,7 @@ The lock was verified with Python 3.11.15; use a compatible Python 3.11 environm
 
 ## Current Results
 
-The current checked-in corrected result is `results/kion_50k_corrected.json` (three seeds, 50k selected users, two folds). The 10k corrected JSON is retained as protocol-validation evidence; the legacy 50k JSON is historical only. Regenerate reports in the pinned environment before making comparisons:
+The current protocol-v4 result is `results/kion_50k_protocol_v4.json` (three seeds, 50k selected users, two folds, with invalid positive queries excluded). `results/kion_50k_corrected.json` is pre-candidate-fix provenance only. The 10k corrected JSON is retained as protocol-validation evidence; the legacy 50k JSON is historical only. Regenerate reports in the pinned environment before making comparisons:
 
 ```bash
 python compare_methods.py --evaluation rolling --folds 3 --seeds 42,43,44 --n-events 30000 --json > rolling.json

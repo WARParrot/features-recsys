@@ -10,11 +10,20 @@ from models import fit_lgbm_fixed
 
 
 def gain_top_k(train, candidate_columns, k=40, random_state=17):
+    if not isinstance(k, (int, np.integer)) or isinstance(k, bool) or k <= 0:
+        raise ValueError("k must be a positive integer")
+    candidate_columns = list(dict.fromkeys(candidate_columns))
+    candidate_columns = [c for c in candidate_columns if train[c].nunique(dropna=False) > 1]
+    if not candidate_columns:
+        raise ValueError("gain_top_k: no nonconstant training candidates; check history availability")
     model = fit_lgbm_fixed(train, candidate_columns, rounds=400, random_state=random_state)
     gains = pd.Series(
         model.booster_.feature_importance(importance_type="gain"),
         index=candidate_columns,
     ).sort_values(ascending=False)
+    gains = gains[np.isfinite(gains) & (gains > 0)]
+    if gains.empty:
+        raise ValueError("gain_top_k: no finite positive feature gains; selection is not informative")
     return gains.head(k).index.tolist(), gains
 
 
@@ -65,7 +74,22 @@ def forward_select(
     max_candidates=60,
     selection_interval="select",
 ):
-    """Greedily select candidates with auditable per-step validation records."""
+    """Select only finite, strictly improving candidates.
+
+    History includes a terminal rejected step with ``accepted=False`` and a
+    reason; use ``chosen_features`` rather than history length for additions.
+    Empty/constant bases use intercept-only AUC 0.5 for the first comparison.
+    """
+    if not np.isfinite(min_improvement) or min_improvement < 0:
+        raise ValueError("min_improvement must be finite and nonnegative")
+    base_columns = list(dict.fromkeys(base_columns))
+    candidates = list(dict.fromkeys(candidates))
+    for name, frame in (("train", train), ("select", select)):
+        missing = set(base_columns + candidates + ["binary_label"]) - set(frame.columns)
+        if missing:
+            raise ValueError(f"{name} missing selection columns: {sorted(missing)}")
+        if frame["binary_label"].nunique() != 2:
+            raise ValueError(f"{name} must contain both label classes for selection AUC")
     candidate_pool = budgeted_candidate_order(candidates)
     if max_candidates is not None:
         if max_candidates <= 0:
@@ -75,8 +99,9 @@ def forward_select(
     remaining = sorted(column for column in candidate_pool if column not in selected)
     chosen_features = []
     history = []
-    previous_score = None
-    if selected:
+    # An empty or entirely constant base is an intercept-only AUC baseline.
+    previous_score = 0.5
+    if selected and any(train[c].nunique(dropna=False) > 1 for c in selected):
         baseline_model = _linear_model(
             train, selected, categorical_columns, random_state=random_state
         )
@@ -87,10 +112,15 @@ def forward_select(
                 baseline_model.predict_proba(select[selected])[:, 1],
             )
         )
+    if not np.isfinite(previous_score):
+        raise ValueError("forward_select: nonfinite base AUC")
     for step in range(1, min(k, len(remaining)) + 1):
         best_score, best_column = -np.inf, None
         candidates_evaluated = 0
         for column in remaining:
+            candidates_evaluated += 1
+            if train[column].nunique(dropna=False) <= 1:
+                continue
             columns = selected + [column]
             model = _linear_model(
                 train, columns, categorical_columns, random_state=random_state
@@ -99,19 +129,34 @@ def forward_select(
             score = roc_auc_score(
                 select["binary_label"], model.predict_proba(select[columns])[:, 1]
             )
-            candidates_evaluated += 1
+            if not np.isfinite(score):
+                continue
             if (
                 best_column is None
                 or score > best_score
                 or (score == best_score and column < best_column)
             ):
                 best_score, best_column = float(score), column
+        improvement = best_score - previous_score
+        reason = None
         if best_column is None:
-            break
-        improvement = (
-            None if previous_score is None else best_score - previous_score
-        )
-        if improvement is not None and improvement < min_improvement:
+            reason = "no_nonconstant_candidate_with_finite_score"
+        elif not np.isfinite(improvement):
+            reason = "nonfinite_improvement"
+        elif improvement <= 0:
+            reason = "nonpositive_improvement"
+        elif improvement < min_improvement:
+            reason = "below_min_improvement"
+        if reason is not None:
+            history.append({
+                "step": step, "feature": best_column,
+                "score": best_score if np.isfinite(best_score) else None,
+                "previous_score": previous_score,
+                "improvement": improvement if np.isfinite(improvement) else None,
+                "candidates_evaluated": candidates_evaluated,
+                "selection_interval": selection_interval,
+                "accepted": False, "reason": reason,
+            })
             break
         selected.append(best_column)
         chosen_features.append(best_column)

@@ -2,9 +2,19 @@
 
 ## Executive status
 
+### Post-run validity correction (protocol v5)
+
+The completed v5 run (`results/kion_50k_protocol_v5.json`, exit 0, 4:19:22, peak RSS 3,341,024 KiB) is preserved as **exploratory diagnostic evidence only**. Mean AUC was .62428 manual versus .65527 auto_gain, but this does not establish superiority: independent audit found an empty training-history prefix, all 187 history predictors constant zero in first-fold train, all six auto selection AUCs .5, and tied zero-gain feature selection. Refit on train+select introduced populated history only afterward. Bootstrap intervals cannot repair this deterministic design defect. See [audit](audits/v5_validity.md).
+
+Current protocol v6 reserves a history-only warmup and constructs training examples at historical block snapshots. A locked 2×2 factorial design separates history protocol from expanded feature grammar on matched splits and candidates; see [experiment plan](EXPERIMENT_PLAN_V6.md). This is an exploratory follow-up on inspected periods, not a fresh confirmatory holdout. Test remains frozen over the full role whereas training/selection use block cadence: freshness horizon mismatch remains visible and must not be called online equivalence.
+
 This repository contains a **methodology-validity study**, not evidence of production lift. The canonical KION result is `results/kion_50k_protocol_v4.json`: 50,000 selected users, 285,343 retained interactions, three seeds, and two expanding temporal folds. Its protocol-v4 candidate correction is authoritative; earlier 50k JSONs are provenance only (see Section 5). The run's stderr records 1:58:19 elapsed and 2,509,416 KiB peak RSS.
 
 On the canonical result, `auto_gain` differs from `manual` by +0.00137 test AUC and +0.21927 sampled NDCG@10 averaged over six fold/seed cells. Decayed popularity remains stronger on sampled NDCG@10 (0.52138). These are offline, protocol-conditional observations—not causal, impression-level, or production-lift claims.
+
+### Completed protocol-v6 pilot
+
+The locked 1,000-user factorial pilot completed all four cells with exact split/candidate matching. Mean manual versus auto-gain AUC: prequential/base .64282/.62401; prequential/expanded .64282/.61728; snapshot/base .62717/.61183; snapshot/expanded .62717/.62542. No cell supports mean auto superiority. Expanded snapshot sampled NDCG .23360 versus manual .22834 remains below decayed popularity .45345. See [pilot report](audits/v6_pilot_results.md) and [JSON](results/kion_1k_v6_factorial.json) for scope, failures retained, costs, and hypothesis decisions. This pilot does not establish larger-population or online conclusions.
 
 ## 1. Research question and estimands
 
@@ -24,7 +34,7 @@ On the canonical result, `auto_gain` differs from `manual` by +0.00137 test AUC 
 
 ## 2. Validity contract
 
-Current rolling protocol (version 5) supports `history_mode=role_frozen`: for each train/select/valid/test role, feature sources are the strict timestamp prefix before the role start and remain frozen within that role. The legacy prequential behavior remains available explicitly with `--history-mode prequential`. Candidate sensitivity is configurable through `--candidate-n-negatives`, `--candidate-max-queries`, and `--candidate-sampling` (`uniform`, `popularity`, `recent`); `--candidate-catalog full` requires a validated static catalog with `item`, `item_cat`, and finite `first_seen`. These settings define new evaluations and are not retroactively applied to the checked-in protocol-v4 JSON.
+Historical rolling protocol (version 5) supports `history_mode=role_frozen` (now known to degenerate training without warmup): for each train/select/valid/test role, feature sources are the strict timestamp prefix before the role start and remain frozen within that role. The legacy prequential behavior remains available explicitly with `--history-mode prequential`. Candidate sensitivity is configurable through `--candidate-n-negatives`, `--candidate-max-queries`, and `--candidate-sampling` (`uniform`, `popularity`, `recent`); `--candidate-catalog full` requires a validated static catalog with `item`, `item_cat`, and finite `first_seen`. These settings define new evaluations and are not retroactively applied to the checked-in protocol-v4 JSON.
 
 - Equal timestamps are atomic: features at time `t` use only rows with timestamp `< t`.
 - Test rows are excluded from feature sources and causal popularity references.

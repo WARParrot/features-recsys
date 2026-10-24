@@ -1,0 +1,205 @@
+{
+  "budget_policy": "wall budget checked between cells; in-flight fits not interrupted",
+  "cells": [],
+  "cohort": {
+    "fingerprint": "5b41a6a2829b83c3138f1812e8d6531cc7c5e5daef24ecf5b966de1131e19714",
+    "items": 1885,
+    "kion_metadata": {
+      "events": 5505,
+      "feedback_semantics": "observed_watch_interaction; is_click is a compatibility alias, not an impression CTR",
+      "items": 1885,
+      "max_users": 1000,
+      "seed": 42,
+      "source": "https://github.com/irsafilo/KION_DATASET",
+      "target": "watched_pct >= threshold",
+      "users": 1000,
+      "watch_threshold": 50.0
+    },
+    "rows": 5505,
+    "users": 1000
+  },
+  "cost": {
+    "cpu_seconds": 77.505724638,
+    "process_peak_rss_kib": 839948,
+    "rss_scope": "process_lifetime_high_water_mark_linux_not_incremental",
+    "wall_seconds": 69.68674746807665
+  },
+  "error": {
+    "message": "gain_top_k: no finite positive feature gains; selection is not informative",
+    "type": "ValueError"
+  },
+  "finished_utc": "2026-10-24T21:39:26.086600+00:00",
+  "interpretation": "exploratory offline observed-watch discrimination; not causal or online impact",
+  "load_cost": {
+    "cpu_seconds": 45.402840474,
+    "process_peak_rss_kib": 839948,
+    "rss_scope": "process_lifetime_high_water_mark_linux_not_incremental",
+    "wall_seconds": 50.35019020107575
+  },
+  "lock": {
+    "config": {
+      "candidate_max_queries": 400,
+      "candidate_n_negatives": 99,
+      "candidate_sampling": "uniform",
+      "cohort_seed": 42,
+      "folds": 2,
+      "forward_max_candidates": 15,
+      "forward_steps": 3,
+      "inputs": {
+        "interactions": "/root/t-lab/recsys_corrected_artifact/datasets/kion/interactions.csv",
+        "items": "/root/t-lab/recsys_corrected_artifact/datasets/kion/items.csv",
+        "users": "/root/t-lab/recsys_corrected_artifact/datasets/kion/users.csv"
+      },
+      "max_users": 1000,
+      "max_wall_seconds": 7200.0,
+      "seeds": [
+        42
+      ],
+      "smoke_only": false,
+      "smoke_users": 50,
+      "training_blocks": 4,
+      "warmup_fraction": 0.2,
+      "watch_threshold": 50.0
+    },
+    "lock_sha256": "57213d3ba4f5fe64a6abed6583228de0cdde4eefdb2d204dff9841e7d98a93b0",
+    "provenance": {
+      "git_revision": "9a62d2789ad99a3591d8dc7a97c4d1eff9d920aa",
+      "inputs": {
+        "interactions": {
+          "bytes": 180032258,
+          "path": "/root/t-lab/recsys_corrected_artifact/datasets/kion/interactions.csv",
+          "sha256": "201dc9114eb309da9df6f5f227ada23a371d668edf64a32090fb613a75162ecf"
+        },
+        "items": {
+          "bytes": 31836561,
+          "path": "/root/t-lab/recsys_corrected_artifact/datasets/kion/items.csv",
+          "sha256": "027c3a0027b4fe4a8db9d5fa626ab40bab507c96aac81d462db0771eb2cb4a8e"
+        },
+        "users": {
+          "bytes": 29945389,
+          "path": "/root/t-lab/recsys_corrected_artifact/datasets/kion/users.csv",
+          "sha256": "37b2945240628a3f215e1fb5f79b4cff386d8988b21fa61e5b135aef4541182c"
+        }
+      },
+      "packages": {
+        "lightgbm": "4.6.0",
+        "numpy": "2.2.6",
+        "pandas": "2.2.3",
+        "scikit-learn": "1.6.1"
+      },
+      "python": "3.11.15",
+      "source_sha256": "f651ee341147ceed0117491a0557a02085d39d3de696ad6f7e08b351e2a3e055",
+      "sources": {
+        "auto_features.py": "cb0536826bd064f281f52d53a8da2ba1c570b574ab018af03d641c499544b701",
+        "candidate_eval.py": "eb7fb0ca2de8bbf0152a69226877877b08deff2aaeffa2445171ebb605520dbe",
+        "causal_features.py": "1f8478ccf46338cd6808d7dfa1dfb0d0534d0d4affc360ac4eb1046e94ff3ab3",
+        "compare_methods.py": "dab8c91636abaa5c80223362974883e8285f47a9bd06741041676096dd3f347a",
+        "data.py": "5e619bf1348c4a9967f65bae409b2cb618b189b7da4c9600badda020e74bd8ed",
+        "decay_features.py": "bfb866b33aac4c3ca4476024d36e04d0ed5981ba931f6d62e6a32dcb54178570",
+        "diagnostics.py": "d660d5adbc21d0f6e0496952a29692aaae40be3b5833392803689bccde6f0ea4",
+        "experiment_contracts.py": "35fc0f8b04ae572db2ced8d418c8c8067d498062ac764d8b071506334ceea555",
+        "feature_selectors.py": "b0a24832c8268b66f6f5a651ae574207cc6edabe8b3346bbe8da586ad5be5cd8",
+        "history.py": "fb51991185b75f1a4af79e931402b1e3eec060775e9bdbc2bf8b3a77bfe772d4",
+        "kion_data.py": "9a88837128810de5eaed64bb3f5a4c7f6a0eb0701d2cc2ed8437857843f4527b",
+        "linear_model.py": "831864e465edd26656d0a90128fb4561e85b362e42382e5415a6ee8215955fa5",
+        "metrics.py": "051a421f2cc0ff2371d2742b4ed4bab462d3c73c45f8b36c6b6e787215379aff",
+        "mind_data.py": "25cc2672b1fdd59c455743ac69a2020ccf958a3b5c42711d944c529b6bb864ec",
+        "models.py": "4ceed5b665742193f2862d33d3a1bdc6027f7158e9fbb7e9b76dbcec6723d187",
+        "pipeline.py": "c9d580af8da2616fe0bad46d5173b6a56977f521e2442767c8cfdb84598dfd15",
+        "pyproject.toml": "e9fcb2066c65f17b50f5ed6a059d0a89e3a653a5536796141d592528a560cff4",
+        "ranking_references.py": "741231ffa15a4ea1016208c03e7c5c500880ba840b12a4ac4b933ffac713b31b",
+        "requirements.lock": "dfa27713c9c2d61d966f0b159a9e6919e6c868332dfc1403e1c64d969624970b",
+        "requirements.txt": "4b838478fac50f282284a607d1adcc8878203956ecf1d79b055c0e87410a1840",
+        "rolling_eval.py": "8a7a062f453ee27bbac77c3de3cbcdf4604961aa68db8204ed6270b037e12894",
+        "run_ablation.py": "949cc5a7bb42657899967cd9f34729ab36468c34d004dba023372e5216863adf",
+        "run_experiments.py": "5151827e30b94109e6f084f9e6c88d8239d58444aa5c0e39d3d605343cc76f28",
+        "uv.lock": "5630c63461f0a094863a9b7e264ad2f920d4802882d767197ff256b3721d2cda",
+        "validate_protocol.py": "6f3410004038f9f293a8ee9c3061eb4d7c27d972baec47ffd6d1c0bed5e7c448"
+      },
+      "thread_environment": {
+        "MKL_NUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1"
+      }
+    },
+    "schema": "kion_factorial_ablation_v1",
+    "status": "locked_not_executed"
+  },
+  "schema": "kion_factorial_ablation_v1",
+  "smoke": {
+    "cells": [
+      {
+        "cohort_fingerprint": "50e3e7c07bfb1ccdc328b9dc590398f705abaa38d9c2ac4efb168cd5ba8dcfb5",
+        "cost": {
+          "cpu_seconds": 27.986697778999996,
+          "process_peak_rss_kib": 839948,
+          "rss_scope": "process_lifetime_high_water_mark_linux_not_incremental",
+          "wall_seconds": 14.92418091907166
+        },
+        "error": {
+          "message": "gain_top_k: no finite positive feature gains; selection is not informative",
+          "type": "ValueError"
+        },
+        "feature_space": "base",
+        "history_mode": "prequential",
+        "seed": 42,
+        "status": "failed"
+      }
+    ],
+    "config": {
+      "candidate_max_queries": 5,
+      "candidate_n_negatives": 5,
+      "candidate_sampling": "uniform",
+      "cohort_seed": 42,
+      "folds": 1,
+      "forward_max_candidates": 2,
+      "forward_steps": 1,
+      "inputs": {
+        "interactions": "/root/t-lab/recsys_corrected_artifact/datasets/kion/interactions.csv",
+        "items": "/root/t-lab/recsys_corrected_artifact/datasets/kion/items.csv",
+        "users": "/root/t-lab/recsys_corrected_artifact/datasets/kion/users.csv"
+      },
+      "max_users": 1000,
+      "max_wall_seconds": 7200.0,
+      "seeds": [
+        42
+      ],
+      "smoke_only": false,
+      "smoke_users": 50,
+      "training_blocks": 4,
+      "warmup_fraction": 0.2,
+      "watch_threshold": 50.0
+    },
+    "interpretation": "tooling smoke only; not research evidence",
+    "preflight": [
+      {
+        "fold": 0,
+        "ranking_queries": 2,
+        "roles": {
+          "select": {
+            "positives": 34,
+            "rows": 74
+          },
+          "test": {
+            "positives": 45,
+            "rows": 97
+          },
+          "train": {
+            "positives": 23,
+            "rows": 43
+          },
+          "valid": {
+            "positives": 21,
+            "rows": 58
+          }
+        },
+        "seed": 42
+      }
+    ],
+    "rows": 339,
+    "status": "failed",
+    "users": 50
+  },
+  "started_utc": "2026-10-24T21:38:16.399666+00:00",
+  "status": "failed"
+}

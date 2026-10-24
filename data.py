@@ -82,16 +82,21 @@ def split_metadata(ordered, parts):
     return result
 
 
-def rolling_time_splits(df, n_folds=3):
+def rolling_time_splits(df, n_folds=3, warmup_fraction=0.0):
     """Return expanding-train chronological folds without splitting timestamps.
 
-    Each fold has train, select, valid and test blocks of equal timestamp-group
-    width. The train block expands across folds; the later three blocks move
-    forward together. This keeps configuration selection separate from final
-    fold testing.
+    Optional ``warmup_fraction`` reserves an initial timestamp-atomic prefix
+    (nearest row-count fraction) for history only. The remaining timestamps
+    determine train/select/valid/test identically for every feature space and
+    history mode. The train block expands across folds; the later three blocks
+    move forward together. Returned positions always refer to the full ordered
+    log, including warmup; no source rows are dropped or reindexed per role.
+    Zero warmup preserves the original v5 split boundaries.
     """
-    if not isinstance(n_folds, (int, np.integer)) or n_folds <= 0:
+    if isinstance(n_folds, (bool, np.bool_)) or not isinstance(n_folds, (int, np.integer)) or n_folds <= 0:
         raise ValueError("n_folds must be a positive integer")
+    if not np.isscalar(warmup_fraction) or not np.isfinite(warmup_fraction) or not 0 <= warmup_fraction < 1:
+        raise ValueError("warmup_fraction must be finite and in [0, 1)")
     ordered = df.sort_values(["timestamp", "event_id"], kind="mergesort").reset_index(drop=True)
     if ordered.empty:
         raise ValueError("cannot split an empty dataframe")
@@ -101,18 +106,26 @@ def rolling_time_splits(df, n_folds=3):
     boundaries = np.r_[0, group_ends, len(ordered)]
     n_groups = len(boundaries) - 1
     required_blocks = n_folds + 3
-    if n_groups < required_blocks:
+    warmup_groups = 0
+    if warmup_fraction > 0:
+        # Reserve whole timestamp groups, never rows within a simultaneous batch.
+        choices = np.arange(1, n_groups - required_blocks + 1)
+        if not len(choices):
+            raise ValueError("not enough distinct timestamps for warmup and rolling roles")
+        warmup_groups = int(choices[np.argmin(np.abs(boundaries[choices] - warmup_fraction * len(ordered)))])
+    if n_groups - warmup_groups < required_blocks:
         raise ValueError(
             f"at least {required_blocks} distinct timestamps are required for {n_folds} folds"
         )
-    points = np.linspace(0, n_groups, required_blocks + 1, dtype=int)
+    points = np.linspace(warmup_groups, n_groups, required_blocks + 1, dtype=int)
     if np.any(np.diff(points) < 1):
         raise ValueError("timestamp groups are too sparse for requested rolling folds")
     folds = []
     for fold in range(n_folds):
-        group_points = np.asarray([0, *points[fold + 1:fold + 5]])
+        group_points = np.asarray([warmup_groups, *points[fold + 1:fold + 5]])
         cuts = boundaries[group_points]
         folds.append({
+            **({"warmup": np.arange(0, cuts[0])} if warmup_groups else {}),
             "train": np.arange(cuts[0], cuts[1]),
             "select": np.arange(cuts[1], cuts[2]),
             "valid": np.arange(cuts[2], cuts[3]),

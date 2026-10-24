@@ -35,9 +35,12 @@ def test_forward_selection_minimum_improvement_is_measured_from_base():
 
     assert selected == ["base"]
     assert added == []
-    assert history == []
+    assert len(history) == 1
+    assert history[0]["accepted"] is False
+    assert history[0]["reason"] in {"nonpositive_improvement", "below_min_improvement"}
 
 
+def test_forward_selection_reports_budget_and_selection_interval():
     train = _frame(0)
     select = _frame(1)
     selected, added, history = forward_select(
@@ -51,11 +54,11 @@ def test_forward_selection_minimum_improvement_is_measured_from_base():
     )
 
     assert selected[:1] == ["base"]
-    assert len(added) == len(history)
+    assert len(added) == sum(step.get("accepted", True) for step in history)
     assert history[0]["step"] == 1
     assert history[0]["feature"] in {"feature_a", "feature_b"}
     assert history[0]["candidates_evaluated"] == 1
-    assert set(history[0]) == {
+    expected_fields = {
         "step",
         "feature",
         "score",
@@ -64,3 +67,6 @@ def test_forward_selection_minimum_improvement_is_measured_from_base():
         "candidates_evaluated",
         "selection_interval",
     }
+    if history[0].get("accepted") is False:
+        expected_fields |= {"accepted", "reason"}
+    assert set(history[0]) == expected_fields

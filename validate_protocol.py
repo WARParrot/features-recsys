@@ -1,4 +1,4 @@
-"""Validate protocol-v4 experiment result artifacts before comparison."""
+"""Validate schema-v4 artifacts and their separate evaluation semantics."""
 
 from __future__ import annotations
 
@@ -181,7 +181,14 @@ def _validate_fold(fold: Mapping, *, dataset: str, run_seed: int, index: str, so
 
     actual_negatives: float | None = None
     if expected_candidate_protocol == _SAMPLE_CANDIDATE_PROTOCOL:
-        if candidate_protocol.get("catalog_protocol") != "historical_seen_items":
+        rolling_version = fold.get("rolling_protocol_version")
+        legacy_candidates = type(rolling_version) is not int or rolling_version < 5
+        static_catalog = candidate_protocol.get("catalog_protocol") == "static_catalog"
+        if static_catalog and not legacy_candidates:
+            if (candidate_protocol.get("static_catalog_validated") is not True
+                    or candidate_protocol.get("candidate_catalog") != "full"):
+                _fail(source, f"{index}.candidate_protocol static catalog must be validated and full")
+        elif candidate_protocol.get("catalog_protocol") != "historical_seen_items":
             _fail(source, f"{index}.candidate_protocol.catalog_protocol must be historical_seen_items")
         for field in (
             "future_catalog_items_excluded",
@@ -194,7 +201,7 @@ def _validate_fold(fold: Mapping, *, dataset: str, run_seed: int, index: str, so
             f"{index}.candidate_protocol.requested_negatives",
             source,
         )
-        if dataset == "kion" and requested_negatives != 99:
+        if dataset == "kion" and legacy_candidates and requested_negatives != 99:
             _fail(
                 source,
                 f"{index}.candidate_protocol.requested_negatives must be 99 "
@@ -261,6 +268,104 @@ def _validate_fold(fold: Mapping, *, dataset: str, run_seed: int, index: str, so
                 )
 
     return ranking_queries, test_rows
+
+
+# The outer version describes serialization, NOT rolling evaluation semantics.
+# Missing fields stay missing: historical artifacts must not acquire modern defaults.
+_SEMANTIC_FIELDS = (
+    "rolling_protocol_version", "history_mode", "feature_space",
+    "warmup_fraction", "training_blocks", "snapshot_cadence", "test_horizon",
+    "candidate_n_negatives", "candidate_max_queries", "candidate_sampling",
+    "candidate_catalog", "static_catalog_validated", "candidate_parameters_applied",
+    "ranking_history", "watch_threshold", "positive_threshold", "rating_threshold",
+)
+_CANDIDATE_FIELDS = (
+    "name", "catalog_protocol", "requested_negatives", "max_queries", "sampling",
+    "candidate_catalog", "sampling_weights_source", "static_catalog_validated",
+    "future_catalog_items_excluded", "negatives_exclude_previously_seen_items",
+    "positive_source", "positive_items_historically_available", "ranking_claim",
+)
+
+
+def _recorded_semantics(mapping: Mapping) -> dict:
+    return {
+        key: value for key, value in mapping.items()
+        if key in _SEMANTIC_FIELDS or key.endswith("_threshold")
+        or key.startswith("snapshot_") or key.startswith("warmup_")
+    }
+
+
+def _merge_semantics(base: Mapping, extra: Mapping, label: str, source: str) -> dict:
+    merged = dict(base)
+    for key, value in _recorded_semantics(extra).items():
+        if key in merged and (type(value) is not type(merged[key]) or value != merged[key]):
+            _fail(source, f"{label}.{key} does not match declared evaluation semantics")
+        merged[key] = value
+    return merged
+
+
+def _comparability_signature(metadata: Mapping, runs: list, source: str) -> dict:
+    """Return settings and supervised splits, excluding metrics and source revisions."""
+    declared_versions = []
+    base = _recorded_semantics(metadata)
+    if base.get("rolling_protocol_version") is None:
+        base.pop("rolling_protocol_version", None)
+
+    def check_version(mapping: Mapping, label: str, *, required: bool = False) -> None:
+        value = mapping.get("rolling_protocol_version")
+        if value is None and not required:
+            return
+        _require_int(value, f"{label}.rolling_protocol_version", source, minimum=1)
+        declared_versions.append(value)
+
+    check_version(metadata, "metadata")
+    run_signatures = []
+    for i, run in enumerate(runs):
+        label = f"runs[{i}]"
+        required = metadata.get("rolling_protocol_version") is not None
+        check_version(run, label, required=required)
+        settings = _merge_semantics(base, run, label, source)
+        for field in ("metadata", "rolling_protocol"):
+            if field in run:
+                nested = _require_mapping(run[field], f"{label}.{field}", source)
+                check_version(nested, f"{label}.{field}")
+                settings = _merge_semantics(settings, nested, f"{label}.{field}", source)
+        fold_signatures = []
+        for j, fold in enumerate(run.get("folds", [run])):
+            fold_label = f"{label}.folds[{j}]"
+            check_version(fold, fold_label, required="rolling_protocol_version" in settings)
+            fold_settings = _merge_semantics(settings, fold, fold_label, source)
+            candidate = fold.get("candidate_protocol") or {}
+            # Candidate metadata is authoritative for old artifacts too. Do not
+            # compare realized query/negative counts, which are outcomes, not knobs.
+            candidate_settings = {k: candidate[k] for k in _CANDIDATE_FIELDS if k in candidate}
+            for setting, field in (
+                ("candidate_n_negatives", "requested_negatives"),
+                ("candidate_max_queries", "max_queries"),
+                ("candidate_sampling", "sampling"),
+                ("candidate_catalog", "candidate_catalog"),
+            ):
+                if setting in fold_settings and field in candidate_settings:
+                    if fold_settings[setting] != candidate_settings[field]:
+                        _fail(source, f"{fold_label}.candidate_protocol.{field} does not match {setting}")
+            fold_signatures.append({
+                "semantics": fold_settings,
+                "candidate_protocol": candidate_settings,
+                "ranking_protocol": fold["ranking_protocol"],
+                "split_metadata": fold["split_metadata"],
+            })
+        run_signatures.append(fold_signatures)
+    if len(set(declared_versions)) > 1:
+        _fail(source, "inconsistent run/fold rolling_protocol_version declarations")
+    # Seeds and the number/order of replicate runs do not change the protocol.
+    unique_runs = sorted({json.dumps(item, sort_keys=True) for item in run_signatures})
+    return {
+        "schema_version": PROTOCOL_VERSION,
+        "dataset": metadata["dataset"],
+        "evaluation": metadata.get("evaluation"),
+        "mind_protocol": metadata.get("mind_protocol"),
+        "runs": [json.loads(item) for item in unique_runs],
+    }
 
 
 def validate_protocol_payload(payload, *, source: str = "<memory>") -> dict:
@@ -349,6 +454,7 @@ def validate_protocol_payload(payload, *, source: str = "<memory>") -> dict:
 
     return {
         "protocol_version": PROTOCOL_VERSION,
+        "comparability_signature": _comparability_signature(metadata, runs, source),
         "dataset": dataset,
         "runs": len(runs),
         "folds": total_folds,
@@ -358,7 +464,7 @@ def validate_protocol_payload(payload, *, source: str = "<memory>") -> dict:
 
 
 def validate_protocol_files(paths: Sequence[str | Path]) -> list[dict]:
-    """Validate result files as one protocol-v4 collection; reject legacy mixes."""
+    """Validate schema-v4 files, rejecting incomparable evaluation collections."""
     paths = [Path(path) for path in paths]
     if not paths:
         raise ProtocolValidationError("at least one result file is required")
@@ -379,6 +485,14 @@ def validate_protocol_files(paths: Sequence[str | Path]) -> list[dict]:
         raise ProtocolValidationError(
             f"result collection mixes datasets ({joined}); validate comparable artifacts separately"
         )
+    reference = validated[0]
+    for report in validated[1:]:
+        if report["comparability_signature"] != reference["comparability_signature"]:
+            raise ProtocolValidationError(
+                f"result collection has incompatible evaluation semantics or splits: "
+                f"{reference['path']} versus {report['path']}; "
+                "matching format schema protocol_version=4 does not imply comparability"
+            )
     return validated
 
 

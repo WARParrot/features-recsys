@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 import numpy as np
 import pandas as pd
 
@@ -32,7 +34,7 @@ from metrics import (
 
 
 _AUC_BOOTSTRAP_REPLICATES = 1000
-ROLLING_PROTOCOL_VERSION = 5
+ROLLING_PROTOCOL_VERSION = 6
 ROLLING_AUC_UNCERTAINTY = {
     "estimand": "pooled_event_level_auc",
     "unit": "user_cluster_resampling",
@@ -45,11 +47,13 @@ ROLLING_AUC_UNCERTAINTY = {
 }
 
 
-def _rolling_features(log, source_mask=None, source_until=None):
+def _rolling_features(log, source_mask=None, source_until=None, feature_space="expanded"):
+    if feature_space not in {"base", "expanded"}:
+        raise ValueError("feature_space must be base or expanded")
     baseline = build_baseline_features(log, source_mask=source_mask, source_until=source_until)
     feedback_target = "is_positive_watch" if "is_positive_watch" in log else "is_click"
     specs = [
-        spec for spec in enumerate_specs(feedback_target=feedback_target)
+        spec for spec in enumerate_specs(feedback_target=feedback_target, include_derived=feature_space == "expanded")
         if set(spec["keys"]).issubset(log.columns)
     ]
     auto = compute_specs(log, specs, source_mask=source_mask, source_until=source_until)
@@ -132,27 +136,94 @@ def _ranking_result(
     return rankings, ranking_log
 
 
-def _fold_features(log, parts, history_mode):
+def _history_blocks(log, parts, history_mode, training_blocks=4):
+    """Positions sharing a strict-prefix snapshot; warmup is never supervised.
+
+    Snapshot train/select/valid use a common timestamp-group cadence derived
+    from the initial train interval. Test remains one frozen block to match
+    candidate ranking's frozen pre-test history (no test feedback is available).
+    """
+    if history_mode not in {"snapshot", "prequential", "role_frozen"}:
+        raise ValueError("history_mode must be snapshot, prequential or role_frozen")
+    if isinstance(training_blocks, (bool, np.bool_)) or not isinstance(training_blocks, (int, np.integer)) or training_blocks < 1:
+        raise ValueError("training_blocks must be a positive integer")
+    cadence = None
+    if history_mode == "snapshot":
+        if "warmup" not in parts or not len(parts["warmup"]):
+            raise ValueError("snapshot requires a nonempty warmup period")
+        n_groups = log.iloc[parts["train"]]["timestamp"].nunique()
+        if n_groups < training_blocks:
+            raise ValueError("train needs at least training_blocks distinct timestamps")
+        cadence = max(1, n_groups // training_blocks)
+    result = {}
+    for role in ("train", "select", "valid", "test"):
+        positions = parts[role]
+        if cadence is None or role == "test":
+            result[role] = [positions]
+            continue
+        times = log.iloc[positions]["timestamp"].to_numpy()
+        edges = np.r_[0, np.flatnonzero(times[1:] != times[:-1]) + 1, len(times)]
+        # Equal-sized timestamp-group blocks; final role block may be shorter.
+        cuts = edges[np.r_[np.arange(0, len(edges) - 1, cadence), len(edges) - 1]]
+        result[role] = [positions[start:end] for start, end in zip(cuts[:-1], cuts[1:])]
+    return result
+
+
+def _fold_features(log, parts, history_mode, feature_space="expanded", training_blocks=4):
+    role_blocks = _history_blocks(log, parts, history_mode, training_blocks)
     source_mask = np.ones(len(log), dtype=bool)
     source_mask[parts["test"]] = False
     if history_mode == "prequential":
-        return _rolling_features(log, source_mask=source_mask)
+        return _rolling_features(log, source_mask=source_mask, feature_space=feature_space)
+    # Keep the full positional index, including warmup and any trailing fold
+    # rows. Concatenating only supervised rows and then iloc-ing global positions
+    # silently misaligns rows when warmup is present.
     blocks = [[], [], []]
-    for positions in parts.values():
+    for positions in [p for role in role_blocks.values() for p in role]:
         cutoff = log.iloc[positions]["timestamp"].min()
+        # Future rows cannot contribute and need not be indexed repeatedly.
+        # Keep original positional labels so block extraction stays aligned.
+        prefix = log.iloc[: int(positions[-1]) + 1]
         values = _rolling_features(
-            log,
-            source_mask=log["timestamp"].to_numpy() < cutoff,
-            source_until=cutoff,
+            prefix, source_mask=prefix["timestamp"].to_numpy() < cutoff,
+            source_until=cutoff, feature_space=feature_space,
         )
         for block, features in zip(blocks, values[:3]):
             block.append(features.iloc[positions])
-    return (*(pd.concat(block).sort_index() for block in blocks), values[3])
+    aligned = [pd.concat(block).reindex(log.index) for block in blocks]
+    # Reindexing adds NaN warmup slots; preserve raw integer IDs/categories
+    # instead of converting them to potentially lossy floats (> 2**53).
+    for column in log.columns.intersection(aligned[0].columns):
+        aligned[0][column] = log[column]
+    return (*aligned, values[3])
+
+
+def _fold_diagnostic_payload(log, parts, full, predictor_columns):
+    """Exact role membership identities and predictor-only descriptive stats."""
+    from diagnostics import fold_diagnostics
+    predictor_columns = list(dict.fromkeys(predictor_columns))
+    return {
+        "split_fingerprint": {
+            role: hashlib.sha256(
+                pd.util.hash_pandas_object(log.iloc[positions][["event_id"]], index=False)
+                .to_numpy().tobytes()
+            ).hexdigest()
+            for role, positions in parts.items()
+        },
+        "diagnostics_feature_scope": "declared_manual_auto_and_decay_predictors_only",
+        "diagnostics": fold_diagnostics(
+            log, {role: parts[role] for role in ("train", "select", "valid", "test")},
+            full[predictor_columns],
+        ),
+    }
 
 
 def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, forward_steps=8,
-                 history_mode="prequential", **candidate_options):
-    baseline, auto, decay, specs = _fold_features(log, parts, history_mode)
+                 history_mode="prequential", feature_space="expanded", training_blocks=4,
+                 protocol_version=6, **candidate_options):
+    baseline, auto, decay, specs = _fold_features(
+        log, parts, history_mode, feature_space=feature_space, training_blocks=training_blocks
+    )
     categorical = [column for column in CATEGORICAL_FEATURES if column in log.columns]
     manual_columns = [
         column for column in BASELINE_FEATURES + categorical
@@ -161,7 +232,7 @@ def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, for
     auto_columns = auto.columns.tolist()
     decay_columns = decay.columns.tolist()
     full = baseline.join(auto).join(decay)
-    frames = {name: full.iloc[index].copy() for name, index in parts.items()}
+    frames = {name: full.iloc[parts[name]].copy() for name in ("train", "select", "valid", "test")}
     train, select, valid, test = (
         frames[name] for name in ("train", "select", "valid", "test")
     )
@@ -285,15 +356,34 @@ def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, for
             n_boot=_AUC_BOOTSTRAP_REPLICATES,
         )
 
+    diagnostic_payload = _fold_diagnostic_payload(
+        log, parts, full, manual_columns + auto_columns + decay_columns
+    )
+    candidate_columns = [c for c in ("query_id", "item", "label") if c in ranking_log]
+    candidate_fingerprint = hashlib.sha256(
+        pd.util.hash_pandas_object(ranking_log[candidate_columns], index=False).to_numpy().tobytes()
+    ).hexdigest()
     return {
         "fold": fold,
-        "rolling_protocol_version": ROLLING_PROTOCOL_VERSION,
+        "candidate_fingerprint": candidate_fingerprint,
+        **diagnostic_payload,
+        "rolling_protocol_version": protocol_version,
+        "feature_space": feature_space,
+        "auto_spec_count": len(specs),
         "history_mode": history_mode,
+        "history_blocks": {
+            role: [
+                {"start": int(p[0]), "end_exclusive": int(p[-1]) + 1,
+                 "source_until": int(log.iloc[p[0]]["timestamp"])}
+                for p in blocks
+            ] for role, blocks in _history_blocks(log, parts, history_mode, training_blocks).items()
+        },
         "history_metadata": {
             role: {
                 "prefix_end_exclusive": int(positions[0]),
                 "prefix_end_timestamp": int(log.iloc[positions[0]]["timestamp"]),
                 "frozen_within_role": history_mode == "role_frozen" or role == "test",
+                "frozen_within_block": history_mode != "prequential" or role == "test",
             }
             for role, positions in parts.items()
         },
@@ -357,12 +447,28 @@ def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, for
 def run_rolling_frame(
     frame, seed=42, n_folds=3, dataset="synthetic",
     forward_max_candidates=60, forward_steps=8,
-    history_mode="role_frozen", candidate_n_negatives=99, candidate_max_queries=400,
+    history_mode="snapshot", candidate_n_negatives=99, candidate_max_queries=400,
     candidate_sampling="uniform", candidate_catalog="cohort", item_catalog=None,
+    warmup_fraction=None, training_blocks=4, feature_space="expanded",
 ):
-    """Evaluate folds; role_frozen uses only the prefix before each role."""
-    if history_mode not in {"prequential", "role_frozen"}:
-        raise ValueError("history_mode must be prequential or role_frozen")
+    """Evaluate strict-prior folds without test tuning.
+
+    Version 6 defaults to warmup + historical snapshot blocks. Explicit
+    prequential/role_frozen with warmup_fraction=0 reproduce v5. For factorial
+    comparisons pass the same positive warmup_fraction to every history mode.
+    training_blocks sets a common group cadence floor(train_groups / blocks)
+    reused in select/valid. Test remains frozen to match candidate ranking;
+    its intentionally longer snapshot horizon is reported in the protocol.
+    """
+    if history_mode not in {"snapshot", "prequential", "role_frozen"}:
+        raise ValueError("history_mode must be snapshot, prequential or role_frozen")
+    if feature_space not in {"base", "expanded"}:
+        raise ValueError("feature_space must be base or expanded")
+    if warmup_fraction is None:
+        warmup_fraction = 0.2 if history_mode == "snapshot" else 0.0
+    if history_mode == "snapshot" and warmup_fraction == 0:
+        raise ValueError("snapshot requires a positive warmup_fraction")
+    protocol_version = 5 if history_mode != "snapshot" and warmup_fraction == 0 else ROLLING_PROTOCOL_VERSION
     if candidate_sampling not in {"uniform", "popularity", "recent"}:
         raise ValueError("invalid candidate_sampling")
     if candidate_catalog not in {"cohort", "full"}:
@@ -374,18 +480,28 @@ def run_rolling_frame(
     if candidate_catalog == "full":
         from candidate_eval import validate_static_catalog
         item_catalog = validate_static_catalog(item_catalog)
-    protocol = dict(history_mode=history_mode, candidate_n_negatives=int(candidate_n_negatives),
+    if isinstance(training_blocks, (bool, np.bool_)) or not isinstance(training_blocks, (int, np.integer)) or training_blocks < 1:
+        raise ValueError("training_blocks must be a positive integer")
+    protocol = dict(history_mode=history_mode, feature_space=feature_space,
+                    warmup_fraction=float(warmup_fraction), training_blocks=int(training_blocks),
+                    snapshot_cadence="train_timestamp_groups_divided_by_training_blocks",
+                    test_horizon="whole_role_frozen_to_match_candidate_ranking",
+                    candidate_n_negatives=int(candidate_n_negatives),
                     candidate_max_queries=int(candidate_max_queries), candidate_sampling=candidate_sampling,
                     candidate_catalog=candidate_catalog, static_catalog_validated=candidate_catalog == "full",
                     candidate_parameters_applied=dataset != "mind", ranking_history="frozen_prefix_before_test")
     source_splits = tuple(frame.attrs.get("mind_metadata", {}).get("splits", ()))
-    log, folds = rolling_time_splits(frame, n_folds=n_folds)
+    log, folds = rolling_time_splits(frame, n_folds=n_folds, warmup_fraction=warmup_fraction)
+    for parts in folds:
+        _history_blocks(log, parts, history_mode, training_blocks)
     results = [
         _fold_result(
             log, parts, seed, fold, dataset,
             forward_max_candidates=forward_max_candidates,
             forward_steps=forward_steps,
-            history_mode=history_mode, candidate_n_negatives=candidate_n_negatives,
+            history_mode=history_mode, feature_space=feature_space,
+            training_blocks=training_blocks, protocol_version=protocol_version,
+            candidate_n_negatives=candidate_n_negatives,
             candidate_max_queries=candidate_max_queries, candidate_sampling=candidate_sampling,
             candidate_catalog=candidate_catalog, item_catalog=item_catalog,
         )
@@ -398,9 +514,9 @@ def run_rolling_frame(
         "folds": results,
         "summary": summary.reset_index().to_dict("records"),
         "evaluation": "rolling_temporal",
-        "rolling_protocol_version": ROLLING_PROTOCOL_VERSION,
+        "rolling_protocol_version": protocol_version,
         "rolling_protocol": protocol,
-        "metadata": {"rolling_protocol_version": ROLLING_PROTOCOL_VERSION, **protocol},
+        "metadata": {"rolling_protocol_version": protocol_version, **protocol},
         "evaluation_uncertainty": {"event_level_auc": ROLLING_AUC_UNCERTAINTY.copy()},
         "forward_search": {"max_candidates": forward_max_candidates, "steps": forward_steps},
         "mind_metadata": (
@@ -440,15 +556,18 @@ def summarize_rolling_runs(runs):
 def run_rolling_many(
     frame, seeds=(42,), n_folds=3, dataset="synthetic",
     forward_max_candidates=60, forward_steps=8,
-    history_mode="role_frozen", candidate_n_negatives=99, candidate_max_queries=400,
+    history_mode="snapshot", candidate_n_negatives=99, candidate_max_queries=400,
     candidate_sampling="uniform", candidate_catalog="cohort", item_catalog=None,
+    warmup_fraction=None, training_blocks=4, feature_space="expanded",
 ):
     return [
         run_rolling_frame(
             frame, seed=seed, n_folds=n_folds, dataset=dataset,
             forward_max_candidates=forward_max_candidates,
             forward_steps=forward_steps,
-            history_mode=history_mode, candidate_n_negatives=candidate_n_negatives,
+            history_mode=history_mode, warmup_fraction=warmup_fraction,
+            training_blocks=training_blocks, feature_space=feature_space,
+            candidate_n_negatives=candidate_n_negatives,
             candidate_max_queries=candidate_max_queries, candidate_sampling=candidate_sampling,
             candidate_catalog=candidate_catalog, item_catalog=item_catalog,
         )

@@ -142,7 +142,10 @@ def main():
     parser.add_argument("--watch-threshold", type=float, default=50.0)
     parser.add_argument("--forward-max-candidates", type=int, default=60)
     parser.add_argument("--forward-steps", type=int, default=8)
-    parser.add_argument("--history-mode", choices=("prequential", "role_frozen"), default="role_frozen")
+    parser.add_argument("--history-mode", choices=("prequential", "role_frozen", "snapshot"), default="snapshot")
+    parser.add_argument("--warmup-fraction", type=float, default=0.2)
+    parser.add_argument("--training-blocks", type=int, default=4)
+    parser.add_argument("--feature-space", choices=("base", "expanded"), default="expanded")
     parser.add_argument("--candidate-n-negatives", type=int, default=99)
     parser.add_argument("--candidate-max-queries", type=int, default=400)
     parser.add_argument("--candidate-sampling", choices=("uniform", "popularity", "recent"), default="uniform")
@@ -180,6 +183,18 @@ def main():
         parser.error("forward search limits must be positive")
     if args.candidate_n_negatives < 0 or args.candidate_max_queries <= 0:
         parser.error("candidate limits are invalid")
+    if not 0 <= args.warmup_fraction < 1 or args.training_blocks <= 0:
+        parser.error("warmup-fraction must be in [0,1) and training-blocks positive")
+    rolling_options = {
+        "history_mode": args.history_mode,
+        "warmup_fraction": args.warmup_fraction,
+        "training_blocks": args.training_blocks,
+        "feature_space": args.feature_space,
+        "candidate_n_negatives": args.candidate_n_negatives,
+        "candidate_max_queries": args.candidate_max_queries,
+        "candidate_sampling": args.candidate_sampling,
+        "candidate_catalog": args.candidate_catalog,
+    }
     seeds = tuple(int(value.strip()) for value in args.seeds.split(",") if value.strip())
     if not seeds:
         parser.error("--seeds must contain at least one integer")
@@ -200,11 +215,7 @@ def main():
                 frame, seeds=seeds, n_folds=args.folds, dataset="kion",
                 forward_max_candidates=args.forward_max_candidates,
                 forward_steps=args.forward_steps,
-                history_mode=args.history_mode,
-                candidate_n_negatives=args.candidate_n_negatives,
-                candidate_max_queries=args.candidate_max_queries,
-                candidate_sampling=args.candidate_sampling,
-                candidate_catalog=args.candidate_catalog,
+                **rolling_options,
             )
             dataset = "kion"
         elif args.mind_root:
@@ -219,11 +230,7 @@ def main():
                 frame, seeds=seeds, n_folds=args.folds, dataset="mind",
                 forward_max_candidates=args.forward_max_candidates,
                 forward_steps=args.forward_steps,
-                history_mode=args.history_mode,
-                candidate_n_negatives=args.candidate_n_negatives,
-                candidate_max_queries=args.candidate_max_queries,
-                candidate_sampling=args.candidate_sampling,
-                candidate_catalog=args.candidate_catalog,
+                **rolling_options,
             )
             dataset = "mind"
         else:
@@ -233,11 +240,7 @@ def main():
                     seeds=(seed,), n_folds=args.folds, dataset="synthetic",
                     forward_max_candidates=args.forward_max_candidates,
                     forward_steps=args.forward_steps,
-                    history_mode=args.history_mode,
-                    candidate_n_negatives=args.candidate_n_negatives,
-                    candidate_max_queries=args.candidate_max_queries,
-                    candidate_sampling=args.candidate_sampling,
-                    candidate_catalog=args.candidate_catalog,
+                    **rolling_options,
                 )[0]
                 for seed in seeds
             ]
@@ -253,11 +256,7 @@ def main():
                 frame, seeds=(seed,), n_folds=args.folds, dataset="kion",
                 forward_max_candidates=args.forward_max_candidates,
                 forward_steps=args.forward_steps,
-                history_mode=args.history_mode,
-                candidate_n_negatives=args.candidate_n_negatives,
-                candidate_max_queries=args.candidate_max_queries,
-                candidate_sampling=args.candidate_sampling,
-                candidate_catalog=args.candidate_catalog,
+                **rolling_options,
             )[0]
             for seed in seeds
         ]
@@ -311,7 +310,10 @@ def main():
             "evaluation": args.evaluation,
             "folds": args.folds if args.evaluation == "rolling" else None,
             "protocol_version": 4,
-            "rolling_protocol_version": 5 if args.evaluation == "rolling" else None,
+            "rolling_protocol_version": results[0].get("rolling_protocol_version") if args.evaluation == "rolling" else None,
+            "warmup_fraction": args.warmup_fraction,
+            "training_blocks": args.training_blocks,
+            "feature_space": args.feature_space,
             "protocol_notes": {
                 "kion_candidate_protocol": "selected-cohort historical catalog sampled unseen-item discrimination",
                 "kion_feedback_semantics": "pair-aggregated observed watch record; not click/impression CTR",

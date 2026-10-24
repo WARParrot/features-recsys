@@ -7,8 +7,8 @@ from compare_methods import main
 
 def test_kion_rolling_fixture_runs_through_cli(monkeypatch, tmp_path, capsys):
     rows = []
-    for day in range(8):
-        for user in range(1, 6):
+    for day in range(24):
+        for user in range(1, 101):
             rows.append(
                 {
                     "user_id": user,

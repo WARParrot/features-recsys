@@ -1,180 +1,211 @@
-# Исправленный модульный RecSys feature-search artifact
+# Автоматический поиск временных признаков для рекомендаций
 
-Актуальный модульный pipeline описан в [MODULAR_COMPARISON.md](MODULAR_COMPARISON.md).
+## Итог проекта
 
-## Решение по датасету
+Проект проверяет, даёт ли ограниченный и воспроизводимый поиск временных признаков прирост относительно ручной базовой модели (`manual`). Основной эксперимент на KION оценивает классификацию наблюдаемых взаимодействий «пользователь–объект» и дополнительно сравнивает ранжирование на искусственно сформированной выборке кандидатов.
 
-**Основной датасет выбран: KION.**
+Итоговый результат находится в [`results/kion_10k_v7_final.json`](results/kion_10k_v7_final.json), а исходная конфигурация запуска сохранена в [`results/kion_10k_v7_final.lock.json`](results/kion_10k_v7_final.lock.json). Подробная техническая информация и история версий приведены в [`REPORT.md`](REPORT.md).
 
-KION соответствует исходной постановке про user-item interactions, timestamp,
-watch feedback, user demographics и item metadata. MIND остаётся отдельным
-logged-impression benchmark для проверки ranking на реальных candidate sets; KION sampled metrics не являются таким ranking benchmark.
+### Краткий вывод
 
-KION используется для основного исследования автоматического feature search.
-Цель — `watched_pct >= 50.0` (порог включительный): это бинарная метка на
-наблюдаемой агрегированной user-item watch-записи; пропуск `watched_pct`
-адаптер относит к нулевому классу. `last_watch_dt` имеет дневную точность и
-отражает последнюю дату просмотра, а не порядок событий внутри дня. Поэтому
-KION event-level AUC — классификация high-watch против lower-watch наблюдаемых
-пар, не CTR, не next-event и не prediction по impression-логам.
+В этом запуске средний AUC `auto_gain` оказался выше ручной модели при расширенном наборе признаков. Для `snapshot + expanded` разница составила `+0,01612`, однако эффект различается между временными периодами. В ранжировании на выборке кандидатов `auto_gain` также выше ручной модели, но уступает затухающей популярности. Эти результаты относятся только к данному офлайн-протоколу: они не показывают качество на реальных показах и не доказывают причинный или производственный эффект.
 
-KION sampled ranking сравнивает held-out high-watch positive с 99 случайными
-unseen negatives (без возвращения) из selected-cohort historical catalog:
-item должен быть впервые замечен строго до query timestamp и не встречаться
-ранее у этого user. Положительные запросы с item, ещё не доступным исторически,
-исключаются. Это query-weighted offline sampled discrimination, не logged
-exposure evaluation и не production candidate set. Для ранжирования внутри реально показанного набора
-MIND `behaviors.tsv`
-содержит impression ID, anonymous user, время, историю кликов и список показанных
-news с labels `0/1`; `news.tsv` содержит category/subcategory. Поэтому MIND
-позволяет оценивать `NDCG/MRR/Recall` на logged impression candidates без
-искусственного добавления unseen-item negatives. Официальное описание: 
-<https://raw.githubusercontent.com/msnews/msnews.github.io/master/assets/doc/introduction.md>.
+Итоговый v7 объединяет девять ячеек исходного запуска на Linux и три ячейки `snapshot + expanded`, заново пересчитанные на Windows. Данные и протокол сравнения совпадают, но время выполнения нельзя использовать для сравнения производительности машин.
 
-Основной KION experiment описан в [REPORT.md](REPORT.md). MIND используется только
-для non-commercial research по условиям набора и остаётся дополнительным
-logged-impression benchmark. Текстовые поля KION/MIND не подаются в первую модель:
-задача artifact — сравнить ручные и автоматически найденные point-in-time aggregate
-features, а не content/history encoder.
+## 1. Данные и постановка
 
-**KuaiRand-Pure остаётся дополнительным causal/temporal benchmark**, потому что
-содержит timestamp, random exposure и много feedback-сигналов, но не даёт полного
-logged candidate set для каждого запроса. Поэтому он хорошо проверяет feature
-causality и temporal drift, но хуже подходит для основного ranking claim.
+### KION
 
-## Формат MIND-эксперимента
+KION содержит записи о взаимодействиях пользователей с объектами, дату последнего просмотра, процент просмотра, характеристики пользователей и метаданные объектов. В эксперимент вошли:
 
-```bash
-# После распаковки MIND-small в mind_data/ с train/ и dev/:
-python compare_methods.py --mind-root mind_data --seeds 42 --json > mind_comparison.json
+- 10 000 пользователей, отобранных с генератором случайных чисел `seed=42`;
+- 55 922 наблюдаемых взаимодействия;
+- 5 090 объектов;
+- целевая метка `watched_pct >= 50.0`;
+- три значения `seed` для обучения: `42`, `43`, `44`;
+- три временных фолда;
+- дневная точность даты `last_watch_dt`.
 
-# Official-style train/dev evaluation, with train-only internal selection:
-python compare_methods.py --mind-root mind_data --evaluation single_split --mind-protocol official_train_dev --json
+Метка получается пороговой бинаризацией процента просмотра. Если `watched_pct` пропущен, загрузчик относит запись к нулевому классу. Данные агрегированы по паре «пользователь–объект»: в них нет полного журнала показов, порядка событий внутри дня или сведений о том, какие объекты были показаны пользователю.
+
+Поэтому AUC здесь показывает, насколько модель различает записи с высоким и низким процентом просмотра среди уже наблюдавшихся взаимодействий. Это не CTR и не вероятность клика после показа. Кроме того, итоговый процент просмотра может стать известен только после просмотра и не обязательно доступен в момент рекомендации.
+
+### Ранжирование на выборке кандидатов
+
+Для каждого допустимого запроса ранжировался один положительный объект с процентом просмотра не ниже 50% и 99 отрицательных. Отрицательные объекты равномерно выбирались без возвращения из исторически доступного каталога выбранной когорты (5 090 объектов); уже встречавшиеся у пользователя объекты исключались. Положительные запросы, для которых объект ещё не появился в каталоге к моменту запроса, не оценивались. На каждом фолде рассматривалось не более 400 положительных запросов; после фильтрации оставалось от 358 до 379.
+
+Метрика усредняется по запросам и характеризует различение на искусственно сформированных наборах кандидатов. Она не оценивает ранжирование по журналу реальных показов и не воспроизводит промышленный набор кандидатов. Для оценки по реальным показам в проекте предусмотрен отдельный путь MIND с исходными списками показанных объектов.
+
+### Источники данных
+
+Использован репозиторий набора данных KION: [KION_DATASET](https://github.com/irsafilo/KION_DATASET). Для воспроизводимости зафиксированы SHA-256 исходных файлов:
+
+```text
+interactions.csv  201dc9114eb309da9df6f5f227ada23a371d668edf64a32090fb613a75162ecf
+users.csv         37b2945240628a3f215e1fb5f79b4cff386d8988b21fa61e5b135aef4541182c
+items.csv         027c3a0027b4fe4a8db9d5fa626ab40bab507c96aac81d462db0771eb2cb4a8e
 ```
 
+## 2. Экспериментальный протокол
 
-`mind_data.py` разворачивает `behaviors.tsv` в одну строку на candidate:
-`query_id`, `user`, `item`, `timestamp`, `label`, `item_cat`. Путь MIND использует
-`score_logged_impressions`; synthetic-путь и его sampled-ranking диагностика
-остаются совместимыми и не смешиваются с impression-level результатами.
+Финальный v7 является факторным экспериментом `2 x 2`:
 
-Исправленные causal-гарантии:
+- `history_mode=prequential` или `snapshot`;
+- `feature_space=base` или `expanded`.
 
-- события одного `timestamp` атомарны и не видят друг друга;
-- split проводится только между timestamp-группами;
-- `source_mask`/`source_until` поддерживают snapshot-протокол;
-- history replay сохраняет контекст предыдущих временных групп;
-- feature indexes и границы окон переиспользуются между specs.
+Комбинация режима истории и набора признаков называется вариантом эксперимента. Каждый вариант проверяли с тремя значениями `seed` и на трёх временных фолдах: всего получилось 12 ячеек (вариант × seed) и 36 оценок на тестовых фолдах.
 
-## Setup
+В обоих режимах первые примерно 20% записей (11 102 из 55 922) используются только как история и не участвуют в обучении; граница прогрева проходит между целыми группами одинакового timestamp.
 
-The artifact supports Python 3.11. From this directory:
+В `prequential` признаки для каждой записи рассчитаны по событиям с timestamp строго меньше timestamp этой записи; события с одинаковым timestamp обрабатываются атомарно и не видят друг друга. В `snapshot` train/select/valid разбиты на временные блоки, и признаки внутри каждого блока рассчитаны по истории строго до его начала. В `base` используются исходные агрегаты; в `expanded` дополнительно включены отношения, разности коротких и длинных окон и время с последнего события.
 
-KION run:
-```bash
-python compare_methods.py --kion-interactions /path/interactions.csv.zip \
-  --kion-users /path/users_en.csv --kion-items /path/items_en.csv \
-  --kion-max-users 10000 --evaluation rolling --folds 2 --seeds 42,43 --json
-```
+Тестовый период в обоих режимах оценивается на истории, зафиксированной строго до его начала. Поэтому эксперимент не воспроизводит обновление рекомендаций по ходу онлайн-сессии. Отбор признаков и настройка выполняются на train/select, validation используется для ранней остановки обучения, а test — только для итоговой оценки.
 
+### Сравниваемые методы
+
+- `manual` — ручная базовая модель: агрегаты по пользователю, объекту, категории и паре «пользователь–объект», обученные LightGBM.
+- `auto_gain` — поиск в ограниченном наборе шаблонных признаков с отбором по важности `gain`, рассчитанной LightGBM только на обучающей выборке.
+- `auto_forward` — последовательный отбор признаков на отборочной части с помощью регуляризованной линейной модели.
+- `decay` — ручные признаки, дополненные экспоненциально затухающими агрегатами.
+- `linear` — регуляризованная логистическая регрессия на ручных признаках.
+- `popularity` и `decay_popularity` — базовые оценки по популярности объектов, обычной и затухающей со временем.
+
+Автоматический поиск не генерирует произвольный SQL или непрозрачные признаки. Пространство поиска ограничено и инспектируемо: для каждого признака можно восстановить источник, окно и временную границу.
+
+## 3. Результаты v7
+
+В каждой строке таблицы приведено среднее по девяти оценкам: трём значениям `seed` на трёх временных фолдах. Это среднее по отдельным оценкам, а не метрика, пересчитанная по объединённым предсказаниям, и не единый доверительный интервал всего эксперимента.
+
+Финальный артефакт объединяет девять ячеек исходного запуска на Linux с ревизии `647f393` и три ячейки `snapshot + expanded`, заново пересчитанные на Windows с ревизии `30065af`. Данные, значения `seed`, временные границы, протокол формирования кандидатов и настройки потоков совпадают. Между ревизиями изменены только учёт ресурсов в `run_ablation.py` и инструменты продолжения; модули признаков, моделей и оценки совпадают с точностью до окончаний строк (CRLF). Пиковая память на Windows не записана. Поскольку расчёты выполнялись на разных машинах, время запуска нельзя использовать для сравнения их производительности.
+
+| История | Признаки | AUC ручной модели | AUC `auto_gain` | `auto_gain` − ручная | NDCG@10 ручной модели | NDCG@10 `auto_gain` | Популярность с затуханием |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Последовательная (`prequential`) | Базовые (`base`) | 0,66892 | 0,66163 | −0,00728 | 0,20500 | 0,26546 | 0,48542 |
+| Последовательная (`prequential`) | Расширенные (`expanded`) | 0,66892 | 0,68088 | +0,01196 | 0,20500 | 0,26776 | 0,48542 |
+| Снимки по блокам (`snapshot`) | Базовые (`base`) | 0,66629 | 0,66029 | −0,00600 | 0,19988 | 0,27413 | 0,48542 |
+| Снимки по блокам (`snapshot`) | Расширенные (`expanded`) | 0,66629 | 0,68241 | +0,01612 | 0,19988 | 0,31507 | 0,48542 |
+
+### Неопределённость и устойчивость
+
+Для `snapshot + expanded` средняя разница AUC по временным фолдам составляет:
+
+- фолд 0: `+0,03596`;
+- фолд 1: `+0,00063`;
+- фолд 2: `+0,01176`.
+
+Для AUC и NDCG@10 приведены парные 95%-ные интервалы, рассчитанные бутстрэпом по пользователям: 1 000 повторов для AUC и 2 000 для NDCG@10 с сохранением числа запросов каждого пользователя. Интервалы рассчитаны отдельно для каждой пары seed и временного фолда при фиксированных признаках, обученных моделях и наблюдаемой тестовой выборке. Они не учитывают вариацию повторного обучения, отбора признаков и временного сдвига, поэтому не дают единой оценки неопределённости по всем периодам.
+
+Интервалы для разницы AUC не включают ноль в 6 из 9 сочетаний seed и временного фолда; все эти случаи приходятся на фолды 0 и 2. Это указывает на положительный эффект в части периодов, но не подтверждает устойчивого улучшения на всём временном промежутке.
+
+Средняя разница NDCG@10 в `snapshot + expanded` составляет `+0,11519`; все девять условных интервалов выше нуля. Минимальная нижняя граница — `+0,01487`. При исследовательском ориентире `+0,02`, выбранном после этапа разработки, нельзя утверждать, что прирост такого размера подтверждён во всех сочетаниях seed и временного фолда.
+
+В этом запуске средний AUC `auto_gain` выше в варианте с расширенным набором признаков. Однако по NDCG@10 на выборке кандидатов `decay_popularity` заметно превосходит `auto_gain`: `0,48542` против `0,31507`.
+
+## 4. Проверка корректности
+
+В проекте проверены:
+
+- обработка событий с одинаковой временной меткой как одной группы;
+- исключение будущих записей из расчёта признаков;
+- соблюдение временных границ train/select/valid/test;
+- изоляция тестовой части от источников признаков и базовых методов ранжирования;
+- совпадение временных частей и наборов кандидатов между вариантами с одинаковым seed;
+- стабильность выборки пользователей;
+- наличие обоих классов в частях, используемых для обучения и оценки;
+- допустимые значения основных числовых метрик;
+- фиксация версий исходников, данных, Python, пакетов и настроек потоков;
+- состав эффективного пула кандидатов после удаления константных признаков обучения.
+
+Все 12 ячеек финального JSON завершены. Проверки контракта результатов, целостности lock-файла, идентичности выборки и сопоставимости временных частей и кандидатов пройдены.
+
+## 5. Исправления после v6
+
+После v6 были исправлены две реализации, влияющие на результаты:
+
+1. `fit_lgbm` теперь останавливает обучение только по AUC, не учитывая стандартную логарифмическую функцию потерь LightGBM.
+2. `forward_select` сначала исключает признаки, постоянные на обучающей выборке, а затем применяет ограничение `max_candidates`.
+
+Также добавлены проверка `max_candidates` и сохранение состава эффективного пула признаков для последующего анализа. Артефакт v6 оставлен без изменений: он отражает результаты до этих исправлений, тогда как v7 — первый полный запуск на 10 000 пользователей после исправлений.
+
+## 6. Ограничения и следующие шаги
+
+Текущая работа не доказывает:
+
+- улучшение CTR или метрик на реальных показах;
+- причинный эффект признаков;
+- превосходство в промышленной генерации кандидатов;
+- устойчивость результата на другом временном периоде или датасете;
+- качество для новых пользователей и объектов.
+
+Для усиления вывода нужны:
+
+1. повторение на нетронутом временном периоде или на втором датасете;
+2. анализ чувствительности к числу отрицательных кандидатов и способу их выборки;
+3. поочерёдное исключение семейств признаков: отношения, давность, контрасты и затухание;
+4. анализ новых пользователей и объектов, длины истории и децилей популярности;
+5. метрики покрытия каталога, новизны, разнообразия, полноты поиска и задержки;
+6. оценка на MIND или другом датасете с журналом показов;
+7. отдельный онлайн- или рандомизированный эксперимент, если требуется оценить влияние на реальную систему.
+
+## 7. История экспериментов
+
+### v6
+
+v6 — полный факторный запуск на 10 000 пользователей, выполненный до исправлений. Он сохранён для сравнения, но его результаты нельзя приписывать текущей реализации.
+
+### v5
+
+v5 сохранён как диагностический неудачный запуск. В первом временном фолде в обучающей части не было истории: все 187 исторических признаков оказались константными, поэтому автоматический отбор не получил полезного сигнала. Наблюдавшаяся разница AUC не доказывает улучшения метода. Подробности приведены в [аудите v5](audits/v5_validity.md).
+
+### v4
+
+v4 — более ранний протокол на 50 000 пользователей. Правила оценки в нём отличаются, поэтому объединять его результаты со статистикой v7 нельзя.
+
+## 8. Воспроизводимость
+
+Работа рассчитана на Python 3.11 и зафиксированные версии зависимостей из [`requirements.lock`](requirements.lock):
 
 ```bash
 python3.11 -m venv .venv
-. .venv/bin/activate
-python -m pip install -r requirements.lock
-python -m pip install --no-deps -e .
-python -m pytest -q
+.venv/bin/python -m pip install -r requirements.lock
+.venv/bin/python -m pip install --no-deps -e .
+.venv/bin/python -m pytest -q
 ```
 
-The installed `recsys-compare` command and the compatibility command
-`python compare_methods.py` execute the same CLI. The latter remains available
-for source-tree use and existing scripts.
-
-Continuous integration runs compilation, the complete test suite, and a small
-single-split smoke experiment. A clean environment is required before treating
-experiment output as valid evidence.
-
-## Result interpretation
-
-Every report should retain the JSON metadata, dependency versions, seed list,
-data size or source split names, candidate protocol, and chronological split
-metadata. A result is not comparable unless those fields match. Synthetic
-sampled-candidate metrics are diagnostics; only MIND logged-impression metrics
-support an impression-level ranking claim.
-
-
-For stronger claims, use expanding rolling temporal folds:
+### Проверка готового результата без повторного обучения
 
 ```bash
-python compare_methods.py --evaluation rolling --folds 3 --seeds 42,43,44 --n-events 30000 --json
+.venv/bin/python - <<'PY'
+import json
+from pathlib import Path
+import run_ablation as ab
+
+result = json.loads(Path("results/kion_10k_v7_final.json").read_text())
+lock_path = Path("results/kion_10k_v7_final.lock.json")
+lock = json.loads(lock_path.read_text())
+unsigned_lock = {key: value for key, value in lock.items() if key != "lock_sha256"}
+assert ab.digest_json(unsigned_lock) == lock["lock_sha256"]
+assert result["lock"] == lock
+config = lock["config"]
+assert result["status"] == "completed"
+assert len(result["cells"]) == 12
+assert all(cell["status"] == "completed" for cell in result["cells"])
+cohort_fingerprint = result["cohort"]["fingerprint"]
+assert all(cell["cohort_fingerprint"] == cohort_fingerprint for cell in result["cells"])
+for cell in result["cells"]:
+    ab.validate_result(cell["result"], config)
+
+# Сравниваем временные части и наборы кандидатов между вариантами с одинаковым seed.
+by_seed = {}
+for cell in result["cells"]:
+    reference = by_seed.setdefault(cell["seed"], cell["result"])
+    if reference is not cell["result"]:
+        ab.assert_comparable(reference, cell["result"])
+print("Проверка v7: lock, ячейки, когорта, временные части и кандидаты пройдена")
+PY
 ```
 
-For the current warmup/block-snapshot protocol and candidate sensitivity controls (synthetic tooling example, not KION research evidence):
-
-```bash
-python compare_methods.py --evaluation rolling --folds 3 --seeds 42,43,44 \
-  --history-mode snapshot --warmup-fraction .2 --training-blocks 4 \
-  --candidate-n-negatives 99 \
-  --candidate-max-queries 400 --candidate-sampling uniform \
-  --candidate-catalog cohort --n-events 30000 --json
-```
-
-The default `rolling` mode uses expanding temporal folds. The `single_split` mode remains an exploratory compatibility path because forward selection and method choice reuse one selection interval. Current rolling runs default to `history_mode=snapshot`, reserving a history-only warmup and training on timestamp-atomic historical blocks. The old `role_frozen` design is retained explicitly for diagnostic replay; see the validity warning below. `prequential` is also a valid factorial comparator with the same explicit positive warmup; use `--warmup-fraction 0` for legacy boundaries. Strict selection guards can reject a historically degenerate run rather than reproduce arbitrary selections. The primary comparison is `auto_gain` versus `manual`; `selected` is descriptive only. Ranking means are query-weighted; in the canonical JSON, `ranking_ndcg10_uncertainty` contains separate per-fold/seed user-cluster bootstrap intervals for sampled NDCG@10, not event-level AUC uncertainty. The canonical protocol-v4 JSON predates the event-level AUC bootstrap change: it has no `event_auc_uncertainty`, and that uncertainty was not recomputed for this checked-in canonical run. New rolling outputs from the current code may contain `event_auc_uncertainty` for pooled event-level AUC, but those outputs are new evaluations and are not fields of the canonical artifact. The canonical protocol-v4 JSON applies the historical-availability filter and records `skipped_positive_queries`; older ranking scores from before this filter are superseded. Even protocol-v4 KION ranking remains a sampled-discrimination diagnostic, not evidence about logged impressions or production ranking.
-
-The default combined protocol prefixes query IDs by source split, then performs the same timestamp-group chronological split and is reported as `combined_temporal`. The `official_train_dev` protocol keeps train and dev separate: train is divided chronologically into internal train/select/valid roles, and dev is held out for final evaluation. Neither mode should be confused with an official leaderboard submission.
-
-The lock was verified with Python 3.11.15; use a compatible Python 3.11 environment for reproducible runs. The KION adapter cannot recover impression exposure or first-decision timestamps from pair-aggregated `last_watch_dt`; all conclusions remain retrospective and protocol-conditional.
+## Практическая рекомендация
 
 
-- ручные temporal features + tuned LightGBM;
-- template-based auto features + gain top-K;
-- template-based auto features + validation forward selection;
-- exponential-decay features вместо только hard windows;
-- regularized Logistic Regression как независимая модельная альтернатива LightGBM;
-- sampled-candidate NDCG/MRR/Recall в synthetic diagnostics;
-- sampled unseen-item discrimination NDCG/MRR/Recall для KION и logged-impression NDCG/MRR/Recall для MIND в дополнение к event-level AUC;
-- cumulative, decayed, category-popularity, and prior user-item positive-watch-rate baselines for KION (MIND retains click terminology).
-
-## Latest completed research: 10k factorial follow-up
-
-The completed [10k-user study](audits/v6_10k_results.md) compares prequential/snapshot history × base/expanded grammar on exactly matched splits and candidates, with three seeds and three temporal folds. All 12 cells completed. [Result JSON](results/kion_10k_v6_factorial.json), [configuration lock](results/kion_10k_v6_factorial.lock.json), [completion log](results/kion_10k_v6_factorial.stderr.log).
-
-| History | Grammar | Manual AUC | Auto gain AUC | Auto − manual |
-|---|---|---:|---:|---:|
-| Prequential | Base | .66936 | .66161 | -.00775 |
-| Prequential | Expanded | .66936 | .68087 | +.01150 |
-| Snapshot | Base | .66736 | .66029 | -.00707 |
-| Snapshot | Expanded | .66736 | .68194 | +.01458 |
-
-These are means over nine fold×seed estimates per variant, not pooled metrics or confidence intervals. Snapshot-expanded AUC support is concentrated in fold0: only 3/9 per-cell paired CIs exclude zero. Its sampled NDCG@10 is .32869 versus manual .20979 (all nine delta CI lower bounds > .02), but decayed popularity is stronger at .48542. Thus **local expanded-feature gains are observed; time-robust AUC superiority and production ranking impact are not established**. Run: 55,922 records, 6:14:10 wall, ~1.07 GiB peak RSS. The 1k pilot below remains separate evidence, not a contradiction to conceal or a result to pool.
-
-## Current validity status
-
-**Protocol-v5 is diagnostic only, not evidence of learned feature-search superiority.** Its role-frozen train prefix was empty: all 187 history features were zero in first-fold training and all six automatic selection AUCs were 0.5. See [independent audit](audits/v5_validity.md).
-
-The current default is protocol-v6 `snapshot`, with a history-only warmup and historical training blocks. Explicit `role_frozen`/`prequential` with zero warmup retain legacy semantics for inspection, not endorsement. Use identical positive warmup fractions for factorial comparisons. Snapshot train/select/valid share a timestamp-group cadence; test remains one frozen role to match ranking candidates, so its longer freshness horizon is a disclosed limitation.
-
-```bash
-python run_ablation.py --dry-run --lock results/pilot.lock.json \
-  --kion-interactions datasets/kion/interactions.csv \
-  --kion-users datasets/kion/users.csv --kion-items datasets/kion/items.csv \
-  --max-users 1000 --seeds 42 --folds 2 \
-  --candidate-n-negatives 99 --candidate-max-queries 400 --smoke-users 1000 \
-  --forward-max-candidates 15 --forward-steps 3
-python run_ablation.py --execute-lock results/pilot.lock.json \
-  --output results/pilot.json
-```
-
-Inspect the lock before execution. It binds input/source hashes, runtime settings and the factorial configuration. Do not change sources between locking and execution. Four cells compare prequential/snapshot × base/expanded on exactly matched split and candidate fingerprints. Smoke is only a tooling check; the 1k cohort is exploratory evidence, not the final generalization result. See [locked design](EXPERIMENT_PLAN_V6.md).
-
-The completed [1k-user factorial pilot](audits/v6_pilot_results.md) does **not** support auto-gain superiority: snapshot-expanded AUC .62542 versus manual .62717; all four mean AUC deltas are negative. Its [artifact](results/kion_1k_v6_factorial.json) retains diagnostics, exact comparison fingerprints, costs and conditional intervals. This is an exploratory pilot, not a generalized negative result.
-
-## Historical Results
-
-The canonical historical result is [`results/kion_50k_protocol_v4.json`](results/kion_50k_protocol_v4.json): 50k selected users, 285,343 interactions, three seeds, two folds, and 2,187 fold×seed ranking queries. It is preserved as an immutable earlier-protocol artifact; current protocol-v6 factorial outputs are new evaluations and must not be mixed with it. Across six cells, test AUC is 0.65271 (manual) vs 0.65408 (`auto_gain`); sampled NDCG@10 is 0.12418 vs 0.34345, while decayed popularity is 0.52138. These are means across six fold/seed summaries, not pooled estimates; the canonical JSON has ranking uncertainty for NDCG@10 but no event-level AUC uncertainty. Its immutable provenance snapshot is code revision `6f8d386d8460be83cc061f5075a714ec32ac3f0c` and source-tree hash `c77188b69f3d65af97879d48dcecc1b5554fb9b780cbabdb6f374a865903fe13`. `kion_50k_corrected.json` is superseded pre-v4 provenance; `kion_10k_corrected.json` is protocol validation only; `kion_50k_legacy_pre_correction.json` and the synthetic smoke table in [historical-results.md](historical-results.md) are historical, non-comparable artifacts. See [REPORT.md](REPORT.md) for target semantics, estimands, uncertainty boundaries, and limitations.
-
-```bash
-python compare_methods.py --evaluation rolling --folds 3 --seeds 42,43,44 --n-events 30000 --json > rolling.json
-```
-
-The former smoke table is retained separately in [historical-results.md](historical-results.md) for provenance only. JSON output includes package versions, source split names, unknown-item metadata, candidate protocol metadata, and exact chronological split ranges.
+Сейчас v7 следует рассматривать как воспроизводимый методологический результат, а не как основание для внедрения. Для более сильного вывода нужны повторение на новом периоде или датасете и оценка ранжирования по журналам реальных показов.

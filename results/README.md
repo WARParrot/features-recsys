@@ -1,15 +1,30 @@
 # Research result index
 
-## Latest completed protocol-v6 factorial follow-up
+## Latest result: corrected v7 factorial run
 
-- `kion_10k_v6_factorial.json`: **completed**, 10,000 users / 55,922 records / 5,090 items, 4 variants × 3 seeds × 3 folds. Exact split and candidate identity checks passed. See [full report](../audits/v6_10k_results.md).
-- `kion_10k_v6_factorial.lock.json`: immutable pre-run configuration/source/input/runtime lock; `locked_not_executed` is the lock status, not the execution status.
-- `kion_10k_v6_factorial.stderr.log`: successful completion/cost summary, 22,450.33 seconds wall and 1,120,968 KiB lifetime peak RSS.
-- `kion_1k_v6_factorial.json`: completed exploratory pilot; not directly pooled/comparable with the different 10k cohort/windows/catalog.
-- `kion_1k_v6_failed_smoke.json`: retained explicit insufficient-positive-gain smoke failure; not a successful research run.
-- `kion_50k_protocol_v5.json`: completed diagnostic run with invalid learned-selection evidence due to empty train-history prefix; see [audit](../audits/v5_validity.md). Do not promote its +.031 mean AUC delta as a validated finding.
+- [`kion_10k_v7_final.json`](kion_10k_v7_final.json) is the current completed artifact: 10,000 users, 55,922 observed watch records, three seeds, three temporal folds, and four matched variants. All 12 cells and 36 fold evaluations passed the result, cohort, split, and candidate checks.
+- [`kion_10k_v7_final.lock.json`](kion_10k_v7_final.lock.json) contains the initial configuration and data/runtime provenance. The final JSON also records how the continuation was assembled.
+- Nine cells came from the locked Linux run at revision `647f393`; the three missing `snapshot/expanded` cells were computed on Windows at revision `30065af`. Both environments used Python 3.11.15, the same package versions, data hashes, seeds, splits, candidate protocol, and single-thread settings. Recorded cell time was 4:04:20 for the reused Linux cells and 17:05 for the Windows cells; the Windows continuation took 17:42 including startup and preflight. These are mixed-host timings, not a single-machine benchmark.
 
-Latest snapshot-expanded mean AUC .68194 versus manual .66736; fold-specific improvement is concentrated in the earliest period. Sampled NDCG .32869 versus manual .20979, below decayed popularity .48542. All values are per-variant means over nine fold×seed summaries; see report for uncertainty limits.
+| History | Features | Manual AUC | Auto gain AUC | Auto - manual | Manual NDCG@10 | Auto NDCG@10 | Decayed popularity |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Prequential | Base | .66892 | .66163 | -.00728 | .20500 | .26546 | .48542 |
+| Prequential | Expanded | .66892 | .68088 | +.01196 | .20500 | .26776 | .48542 |
+| Snapshot | Base | .66629 | .66029 | -.00600 | .19988 | .27413 | .48542 |
+| Snapshot | Expanded | .66629 | .68241 | +.01612 | .19988 | .31507 | .48542 |
+
+These are unweighted means over nine fold/seed results per variant, not pooled estimates. Snapshot-expanded improves on manual in the sampled ranking metric, but decayed popularity remains stronger. The result is offline evidence from observed watch records, not evidence about logged impressions, causal impact, or production lift.
+
+## Historical v6 factorial run
+
+- [`kion_10k_v6_factorial.json`](kion_10k_v6_factorial.json) is the completed pre-correction run on the same 10k cohort. It remains useful for comparison, but its numbers belong to the earlier source revision.
+- [`kion_10k_v6_factorial.lock.json`](kion_10k_v6_factorial.lock.json) records the configuration and provenance used for that run.
+- `kion_10k_v6_factorial.stderr.log` records 22,450.33 seconds of wall time and a 1,120,968 KiB peak RSS.
+- `kion_1k_v6_factorial.json` is an exploratory pilot and should not be pooled with the 10k results.
+- `kion_1k_v6_failed_smoke.json` records an intentionally retained smoke failure, not a successful experiment.
+- `kion_50k_protocol_v5.json` is diagnostic only because its first training-history prefix was degenerate; see the [v5 audit](../audits/v5_validity.md).
+
+The historical v6 snapshot-expanded result was .68194 AUC versus .66736 for manual, and .32869 versus .20979 on sampled NDCG@10. Decayed popularity remained higher at .48542. See the [full v6 report](../audits/v6_10k_results.md) for the original uncertainty analysis.
 
 The factorial artifact has its own `kion_factorial_ablation_v1` schema, not the `compare_methods` schema. Validate its completed cells with `run_ablation.validate_result` and `assert_comparable`; `validate_protocol.py` applies to separate compare-method artifacts. Do not use format-schema compatibility as evidence of experiment comparability.
 

@@ -31,6 +31,10 @@ Protocol v5 freezes training features at the first training timestamp. For the e
 4. Outputs written atomically; status/exit errors retained. Source/input hashes and elapsed costs saved. Missing/failed cells do not become zeros or omitted successes.
 5. Invalid training-history, split mismatch, differing candidate identities or nonfinite metrics block scientific conclusions. Correctness repairs require a new manifest and rerun, never editing metrics.
 
+## Execution outcome (appended after completion; design above unchanged)
+
+The 1k pilot and the subsequent 10k/three-seed/three-fold factorial follow-up both completed. The immutable 10k lock hash is `5ff59a75b37cd13d6110af9b5afe284f021d428b5449c21c1e96f2317388ff78`; source revision `388e488`. All four variants share split and candidate fingerprints within seed. The 10k expanded-snapshot mean AUC delta is +.01458, but only fold0 intervals exclude zero; all nine sampled-NDCG delta intervals exceed +.02 and popularity still wins. These outcomes do not change the pre-execution design or convert exploration into confirmation. Full results, limitations and costs: [10k report](audits/v6_10k_results.md).
+
 ## Conclusions and unclosed external evidence
 
 Label each effect supported locally / not supported / inconclusive with explicit cell/time scope. An observed failure is a valid research conclusion. MIND real-data evaluation, retrieval impact, broader cold-start/scalability and novel algorithmic claims are not established by this factorial study. Missing impression times cannot be recovered from KION aggregates.

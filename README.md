@@ -109,16 +109,17 @@ For stronger claims, use expanding rolling temporal folds:
 python compare_methods.py --evaluation rolling --folds 3 --seeds 42,43,44 --n-events 30000 --json
 ```
 
-For the corrected role-frozen protocol and candidate sensitivity controls:
+For the current warmup/block-snapshot protocol and candidate sensitivity controls (synthetic tooling example, not KION research evidence):
 
 ```bash
 python compare_methods.py --evaluation rolling --folds 3 --seeds 42,43,44 \
-  --history-mode role_frozen --candidate-n-negatives 99 \
+  --history-mode snapshot --warmup-fraction .2 --training-blocks 4 \
+  --candidate-n-negatives 99 \
   --candidate-max-queries 400 --candidate-sampling uniform \
   --candidate-catalog cohort --n-events 30000 --json
 ```
 
-The default `rolling` mode uses expanding temporal folds. The `single_split` mode remains an exploratory compatibility path because forward selection and method choice reuse one selection interval. Current rolling runs default to `history_mode=snapshot`, reserving a history-only warmup and training on timestamp-atomic historical blocks. The old `role_frozen` design is retained explicitly for diagnostic replay; see the validity warning below. Use `--history-mode prequential` only to reproduce the legacy behavior explicitly. The primary comparison is `auto_gain` versus `manual`; `selected` is descriptive only. Ranking means are query-weighted; in the canonical JSON, `ranking_ndcg10_uncertainty` contains separate per-fold/seed user-cluster bootstrap intervals for sampled NDCG@10, not event-level AUC uncertainty. The canonical protocol-v4 JSON predates the event-level AUC bootstrap change: it has no `event_auc_uncertainty`, and that uncertainty was not recomputed for this checked-in canonical run. New rolling outputs from the current code may contain `event_auc_uncertainty` for pooled event-level AUC, but those outputs are new evaluations and are not fields of the canonical artifact. The canonical protocol-v4 JSON applies the historical-availability filter and records `skipped_positive_queries`; older ranking scores from before this filter are superseded. Even protocol-v4 KION ranking remains a sampled-discrimination diagnostic, not evidence about logged impressions or production ranking.
+The default `rolling` mode uses expanding temporal folds. The `single_split` mode remains an exploratory compatibility path because forward selection and method choice reuse one selection interval. Current rolling runs default to `history_mode=snapshot`, reserving a history-only warmup and training on timestamp-atomic historical blocks. The old `role_frozen` design is retained explicitly for diagnostic replay; see the validity warning below. `prequential` is also a valid factorial comparator with the same explicit positive warmup; use `--warmup-fraction 0` for legacy boundaries. Strict selection guards can reject a historically degenerate run rather than reproduce arbitrary selections. The primary comparison is `auto_gain` versus `manual`; `selected` is descriptive only. Ranking means are query-weighted; in the canonical JSON, `ranking_ndcg10_uncertainty` contains separate per-fold/seed user-cluster bootstrap intervals for sampled NDCG@10, not event-level AUC uncertainty. The canonical protocol-v4 JSON predates the event-level AUC bootstrap change: it has no `event_auc_uncertainty`, and that uncertainty was not recomputed for this checked-in canonical run. New rolling outputs from the current code may contain `event_auc_uncertainty` for pooled event-level AUC, but those outputs are new evaluations and are not fields of the canonical artifact. The canonical protocol-v4 JSON applies the historical-availability filter and records `skipped_positive_queries`; older ranking scores from before this filter are superseded. Even protocol-v4 KION ranking remains a sampled-discrimination diagnostic, not evidence about logged impressions or production ranking.
 
 The default combined protocol prefixes query IDs by source split, then performs the same timestamp-group chronological split and is reported as `combined_temporal`. The `official_train_dev` protocol keeps train and dev separate: train is divided chronologically into internal train/select/valid roles, and dev is held out for final evaluation. Neither mode should be confused with an official leaderboard submission.
 
@@ -134,6 +135,19 @@ The lock was verified with Python 3.11.15; use a compatible Python 3.11 environm
 - sampled unseen-item discrimination NDCG/MRR/Recall для KION и logged-impression NDCG/MRR/Recall для MIND в дополнение к event-level AUC;
 - cumulative, decayed, category-popularity, and prior user-item positive-watch-rate baselines for KION (MIND retains click terminology).
 
+## Latest completed research: 10k factorial follow-up
+
+The completed [10k-user study](audits/v6_10k_results.md) compares prequential/snapshot history × base/expanded grammar on exactly matched splits and candidates, with three seeds and three temporal folds. All 12 cells completed. [Result JSON](results/kion_10k_v6_factorial.json), [configuration lock](results/kion_10k_v6_factorial.lock.json), [completion log](results/kion_10k_v6_factorial.stderr.log).
+
+| History | Grammar | Manual AUC | Auto gain AUC | Auto − manual |
+|---|---|---:|---:|---:|
+| Prequential | Base | .66936 | .66161 | -.00775 |
+| Prequential | Expanded | .66936 | .68087 | +.01150 |
+| Snapshot | Base | .66736 | .66029 | -.00707 |
+| Snapshot | Expanded | .66736 | .68194 | +.01458 |
+
+These are means over nine fold×seed estimates per variant, not pooled metrics or confidence intervals. Snapshot-expanded AUC support is concentrated in fold0: only 3/9 per-cell paired CIs exclude zero. Its sampled NDCG@10 is .32869 versus manual .20979 (all nine delta CI lower bounds > .02), but decayed popularity is stronger at .48542. Thus **local expanded-feature gains are observed; time-robust AUC superiority and production ranking impact are not established**. Run: 55,922 records, 6:14:10 wall, ~1.07 GiB peak RSS. The 1k pilot below remains separate evidence, not a contradiction to conceal or a result to pool.
+
 ## Current validity status
 
 **Protocol-v5 is diagnostic only, not evidence of learned feature-search superiority.** Its role-frozen train prefix was empty: all 187 history features were zero in first-fold training and all six automatic selection AUCs were 0.5. See [independent audit](audits/v5_validity.md).
@@ -145,7 +159,8 @@ python run_ablation.py --dry-run --lock results/pilot.lock.json \
   --kion-interactions datasets/kion/interactions.csv \
   --kion-users datasets/kion/users.csv --kion-items datasets/kion/items.csv \
   --max-users 1000 --seeds 42 --folds 2 \
-  --candidate-n-negatives 99 --candidate-max-queries 400
+  --candidate-n-negatives 99 --candidate-max-queries 400 --smoke-users 1000 \
+  --forward-max-candidates 15 --forward-steps 3
 python run_ablation.py --execute-lock results/pilot.lock.json \
   --output results/pilot.json
 ```
@@ -156,7 +171,7 @@ The completed [1k-user factorial pilot](audits/v6_pilot_results.md) does **not**
 
 ## Historical Results
 
-The canonical historical result is [`results/kion_50k_protocol_v4.json`](results/kion_50k_protocol_v4.json): 50k selected users, 285,343 interactions, three seeds, two folds, and 2,187 fold×seed ranking queries. It is preserved as an immutable earlier-protocol artifact; current protocol-5 rolling outputs are new evaluations and must not be mixed with it. Across six cells, test AUC is 0.65271 (manual) vs 0.65408 (`auto_gain`); sampled NDCG@10 is 0.12418 vs 0.34345, while decayed popularity is 0.52138. These are means across six fold/seed summaries, not pooled estimates; the canonical JSON has ranking uncertainty for NDCG@10 but no event-level AUC uncertainty. Its immutable provenance snapshot is code revision `6f8d386d8460be83cc061f5075a714ec32ac3f0c` and source-tree hash `c77188b69f3d65af97879d48dcecc1b5554fb9b780cbabdb6f374a865903fe13`. `kion_50k_corrected.json` is superseded pre-v4 provenance; `kion_10k_corrected.json` is protocol validation only; `kion_50k_legacy_pre_correction.json` and the synthetic smoke table in [historical-results.md](historical-results.md) are historical, non-comparable artifacts. See [REPORT.md](REPORT.md) for target semantics, estimands, uncertainty boundaries, and limitations.
+The canonical historical result is [`results/kion_50k_protocol_v4.json`](results/kion_50k_protocol_v4.json): 50k selected users, 285,343 interactions, three seeds, two folds, and 2,187 fold×seed ranking queries. It is preserved as an immutable earlier-protocol artifact; current protocol-v6 factorial outputs are new evaluations and must not be mixed with it. Across six cells, test AUC is 0.65271 (manual) vs 0.65408 (`auto_gain`); sampled NDCG@10 is 0.12418 vs 0.34345, while decayed popularity is 0.52138. These are means across six fold/seed summaries, not pooled estimates; the canonical JSON has ranking uncertainty for NDCG@10 but no event-level AUC uncertainty. Its immutable provenance snapshot is code revision `6f8d386d8460be83cc061f5075a714ec32ac3f0c` and source-tree hash `c77188b69f3d65af97879d48dcecc1b5554fb9b780cbabdb6f374a865903fe13`. `kion_50k_corrected.json` is superseded pre-v4 provenance; `kion_10k_corrected.json` is protocol validation only; `kion_50k_legacy_pre_correction.json` and the synthetic smoke table in [historical-results.md](historical-results.md) are historical, non-comparable artifacts. See [REPORT.md](REPORT.md) for target semantics, estimands, uncertainty boundaries, and limitations.
 
 ```bash
 python compare_methods.py --evaluation rolling --folds 3 --seeds 42,43,44 --n-events 30000 --json > rolling.json

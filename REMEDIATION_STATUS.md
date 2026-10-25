@@ -17,11 +17,15 @@ This ledger separates implemented corrections from experiments and data limitati
 - Locked 2×2 real-data factorial runner with preflight class/candidate support, finite-metric success gates, atomic checkpoints and cost metadata.
 - Validator rejects mixed semantic versions/splits despite identical outer schema version.
 
+## Completed experimental evidence
+
+The 10k-user, three-seed, three-temporal-fold, four-variant locked factorial follow-up completed all 12 cells. Exact split/candidate fingerprints, finite endpoints and diagnostic gates passed; conditional user-cluster AUC/ranking intervals and end-to-end costs are retained. See `audits/v6_10k_results.md`. Expanded-snapshot mean AUC gain +.01458 is mostly early-period-specific; sampled NDCG gain is locally supported but popularity remains stronger. This closes the planned factorial follow-up, not robustness across all candidate/target policies or a deployment claim.
+
 ## Evidence still required — not claimed complete
 
 - New 50k/all-user canonical experiment on the corrected implementation, with AUC uncertainty, cost, stderr and immutable source snapshot.
 - Real MIND official_train_dev experiment. MIND data are not present in this checkout; loader/tests are not empirical benchmark evidence.
-- Multi-seed, >=3 temporal-fold sensitivity matrix across negative counts/sampling policies/watch thresholds.
+- Candidate/target sensitivity matrix across negative counts/sampling policies/watch thresholds. Three-seed/three-fold coverage is now completed for the fixed uniform99, threshold50 factorial experiment only.
 - Cold-start, popularity/history-length slices, ranking coverage/novelty/diversity and per-stage scaling measurements.
 - A broader algorithmic novelty claim or SQL-agent search. Current method is expanded but still bounded template search.
 

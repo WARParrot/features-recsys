@@ -10,11 +10,13 @@ This directory now contains a modular, reproducible comparison pipeline.
 | `causal_features.py` | Reusable point-in-time indexes, window aggregates and exponential decay |
 | `decay_features.py` | Decay features as an alternative to hard windows |
 | `auto_features.py` | Template-based feature specs and candidate computation |
-| `feature_selectors.py` | Training-gain top-K and validation-forward selection |
+| `feature_selectors.py` | Training-gain top-K and selection-interval forward search with degeneracy guards |
 | `models.py` | LightGBM fit/predict interface |
 | `linear_model.py` | One-hot, regularized Logistic Regression alternative |
 | `pipeline.py` | Shared single-split experiment orchestration and comparison |
-| `rolling_eval.py` | Expanding rolling temporal evaluation |
+| `rolling_eval.py` | Warmup/block-snapshot and prequential rolling temporal evaluation |
+| `diagnostics.py` | Predictor-only role diagnostics and history-support summaries |
+| `run_ablation.py` | Locked factorial comparison with exact split/candidate identity checks |
 | `metrics.py` | Query-group ranking metrics |
 | `compare_methods.py` | CLI and multi-seed summaries |
 | `mind_data.py` | MIND/MIND-small TSV loader and logged-impression flattening |
@@ -31,9 +33,7 @@ This directory now contains a modular, reproducible comparison pipeline.
 - `decay`: baseline features augmented with exponential-decay watch/click counts (KION watch semantics; MIND click semantics).
 - `linear`: regularized Logistic Regression on baseline features, compared with LightGBM.
 
-The canonical real-data feature-search result is KION protocol v4 (see
-[`results/kion_50k_protocol_v4.json`](results/kion_50k_protocol_v4.json) and
-[`REPORT.md`](REPORT.md)). KION has no impressions: its event target is
+The latest real-data evidence is the completed [10k protocol-v6 factorial follow-up](audits/v6_10k_results.md), with [JSON](results/kion_10k_v6_factorial.json) and [lock](results/kion_10k_v6_factorial.lock.json). Protocol v4 is canonical **historical v4 evidence** only; v5 is diagnostic due to degenerate training (see [audit](audits/v5_validity.md)). See [REPORT.md](REPORT.md) for current conclusions. KION has no impressions: its event target is
 `watched_pct >= 50.0` on observed pair-aggregated watch rows, and sampled ranking
 is only historical-catalog unseen-item discrimination. MIND/MIND-small is a
 separate logged-impression benchmark: its impression candidates are kept intact
@@ -67,7 +67,7 @@ Synthetic candidate JSON records the sampling protocol, requested negatives, que
 
 
 
-The default `rolling` protocol uses expanding temporal folds. `single_split` is retained as an explicitly exploratory compatibility mode because feature search and method choice reuse one selection interval.
+The default `rolling` protocol uses expanding temporal folds and `history_mode=snapshot`, reserving a 20% history-only warmup. Training/select/valid features use historical blocks; test remains frozen for its whole role, a disclosed horizon mismatch. `training_blocks=4` is a cadence target; remainder groups may add blocks. `prequential` with the same positive warmup is the factorial comparator; zero-warmup legacy semantics must be requested explicitly. `single_split` is retained as an explicitly exploratory compatibility mode because feature search and method choice reuse one selection interval.
 
 ```bash
 python compare_methods.py --evaluation rolling --folds 3 --seeds 42,43,44 --n-events 30000 --json
@@ -80,7 +80,7 @@ Each fold selects features/configuration on its own selection interval, uses val
 
 Install dependencies with `python -m pip install -r requirements.lock`, then run `python -m pytest -q`. The lock was verified with Python 3.11.15. The test suite covers timestamp atomicity, snapshot masks, history replay for numeric and string IDs, split boundaries, candidate-label isolation, and causal popularity baselines.
 
-The canonical KION result is [`results/kion_50k_protocol_v4.json`](results/kion_50k_protocol_v4.json); its summary is the six fold/seed cells from 50k selected users. `results/kion_50k_corrected.json` is superseded pre-v4 provenance, the 10k JSON is protocol validation only, and `historical-results.md` contains a pre-correction synthetic smoke result—not KION evidence. Do not compare these older artifacts to protocol v4. Preserve the command, seed list, dataset size, dependency versions, and JSON output with any new report.
+The latest [10k factorial artifact](results/kion_10k_v6_factorial.json) contains 12 cells/36 fold evaluations and uses `kion_factorial_ablation_v1`; validate with `run_ablation.validate_result` and `assert_comparable`, not the separate compare-method schema validator. Follow [REPORT reproduction instructions](REPORT.md#6-reproduction). [`results/kion_50k_protocol_v4.json`](results/kion_50k_protocol_v4.json) is canonical historical v4 evidence, six fold/seed cells from 50k users. `results/kion_50k_corrected.json` is superseded pre-v4 provenance; specifically `results/kion_10k_corrected.json` is the older protocol-validation-only artifact, not the new 10k factorial study. `historical-results.md` contains pre-correction synthetic smoke, not KION evidence. Do not pool these different protocols/cohorts. Preserve the command, seed list, dataset size, dependency versions, and JSON output with any new report.
 
 Candidate-based evaluation is implemented in two explicitly separate modes: sampled
 historical-catalog unseen-item discrimination for synthetic/KION, and logged impression candidates

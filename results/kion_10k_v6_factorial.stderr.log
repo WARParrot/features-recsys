@@ -1,0 +1,1 @@
+{"status": "completed", "output": "results/kion_10k_v6_factorial.json", "cost": {"wall_seconds": 22450.332056425046, "cpu_seconds": 28316.050512076, "process_peak_rss_kib": 1120968, "rss_scope": "process_lifetime_high_water_mark_linux_not_incremental"}}

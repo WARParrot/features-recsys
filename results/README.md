@@ -1,4 +1,19 @@
-# Expanded KION run (2026-10-22)
+# Research result index
+
+## Latest completed protocol-v6 factorial follow-up
+
+- `kion_10k_v6_factorial.json`: **completed**, 10,000 users / 55,922 records / 5,090 items, 4 variants × 3 seeds × 3 folds. Exact split and candidate identity checks passed. See [full report](../audits/v6_10k_results.md).
+- `kion_10k_v6_factorial.lock.json`: immutable pre-run configuration/source/input/runtime lock; `locked_not_executed` is the lock status, not the execution status.
+- `kion_10k_v6_factorial.stderr.log`: successful completion/cost summary, 22,450.33 seconds wall and 1,120,968 KiB lifetime peak RSS.
+- `kion_1k_v6_factorial.json`: completed exploratory pilot; not directly pooled/comparable with the different 10k cohort/windows/catalog.
+- `kion_1k_v6_failed_smoke.json`: retained explicit insufficient-positive-gain smoke failure; not a successful research run.
+- `kion_50k_protocol_v5.json`: completed diagnostic run with invalid learned-selection evidence due to empty train-history prefix; see [audit](../audits/v5_validity.md). Do not promote its +.031 mean AUC delta as a validated finding.
+
+Latest snapshot-expanded mean AUC .68194 versus manual .66736; fold-specific improvement is concentrated in the earliest period. Sampled NDCG .32869 versus manual .20979, below decayed popularity .48542. All values are per-variant means over nine fold×seed summaries; see report for uncertainty limits.
+
+The factorial artifact has its own `kion_factorial_ablation_v1` schema, not the `compare_methods` schema. Validate its completed cells with `run_ablation.validate_result` and `assert_comparable`; `validate_protocol.py` applies to separate compare-method artifacts. Do not use format-schema compatibility as evidence of experiment comparability.
+
+## Historical expanded KION run (2026-10-22)
 
 Status: complete and JSON-validated. The earlier empty file was an interrupted attempt and must not be used. The non-empty legacy file is also not final evidence because it predates historical-catalog filtering and semantic/uncertainty corrections.
 
@@ -25,6 +40,8 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
   --forward-max-candidates 15 --forward-steps 3 --json \
   > results/kion_50k_reproduced.json 2> results/kion_50k_reproduced.stderr.log
 ```
+
+**Command boundary:** the command above, when run on current sources, is a **new current-code 50k extension, not historical v4 reproduction**. Historical replay requires its recorded source/environment snapshot. For the latest 10k factorial result use [REPORT reproduction instructions](../REPORT.md#6-reproduction); do not run this command and label its output v4.
 
 Cost diagnostic: load ~42 seconds; feature construction for one fold ~432 seconds; three-configuration manual tuning ~25 seconds. These are measured local timings, not end-to-end totals. Earlier foreground runs hit 20-minute timeouts and produced no usable result. The replacement runs detached to avoid per-tool timeouts.
 

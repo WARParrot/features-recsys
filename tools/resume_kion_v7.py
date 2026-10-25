@@ -14,14 +14,30 @@ import argparse
 import copy
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import socket
 import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+WINDOWS_PORTABLE_RUN_ABLATION_SHA256 = "312c20853fffa20cc3f81a04ef51a8b2841fb4e6fdc5f75548d20ec20a05b9e4"
+ORIGINAL_RUN_ABLATION_SHA256 = "949cc5a7bb42657899967cd9f34729ab36468c34d004dba023372e5216863adf"
 sys.path.insert(0, str(ROOT))
 import run_ablation as ab
+
+
+def _source_provenance_compatible(current, original):
+    if current["sources"] == original["sources"] and current["source_sha256"] == original["source_sha256"]:
+        return True
+    # The checkpoint predates the Windows-only RSS accounting fix. Permit exactly
+    # that known non-model change while retaining strict hashes for every other source.
+    source_names = set(original["sources"]) | set(current["sources"])
+    changed = {name for name in source_names
+               if current["sources"].get(name) != original["sources"].get(name)}
+    return (os.name == "nt" and changed == {"run_ablation.py"}
+            and original["sources"].get("run_ablation.py") == ORIGINAL_RUN_ABLATION_SHA256
+            and current["sources"].get("run_ablation.py") == WINDOWS_PORTABLE_RUN_ABLATION_SHA256)
 
 
 def prepare(checkpoint, data_dir=None):
@@ -39,7 +55,9 @@ def prepare(checkpoint, data_dir=None):
                             for k, v in config["inputs"].items()}
     current = ab.provenance(config["inputs"])
     old = lock["provenance"]
-    for key in ("sources", "source_sha256", "packages", "python", "thread_environment"):
+    if not _source_provenance_compatible(current, old):
+        raise ValueError("runtime/source mismatch: sources/source_sha256; use the original pinned environment or the supported Windows portability revision")
+    for key in ("packages", "python", "thread_environment"):
         if current[key] != old[key]:
             raise ValueError(f"runtime/source mismatch: {key}; use the original pinned environment")
     if set(current["inputs"]) != set(old["inputs"]):

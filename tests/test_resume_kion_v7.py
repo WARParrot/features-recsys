@@ -29,6 +29,7 @@ def checkpoint(tmp_path, monkeypatch):
     path = tmp_path / "checkpoint.json"
     resume.ab.atomic_json(path, payload)
     monkeypatch.setattr(resume.ab, "provenance", lambda _: provenance.copy())
+    monkeypatch.setattr(resume, "_source_provenance_compatible", lambda *_: True)
     monkeypatch.setattr(resume.ab, "validate_result", lambda *_: None)
     monkeypatch.setattr(resume.ab, "assert_comparable", lambda *_: None)
     return path, payload, provenance
@@ -46,9 +47,10 @@ def test_reuses_only_completed_and_inspection_writes_nothing(checkpoint, tmp_pat
     assert path.read_bytes() == before
 
 
-def test_rejects_source_mismatch(checkpoint):
+def test_rejects_source_mismatch(checkpoint, monkeypatch):
     path, _, provenance = checkpoint
     provenance["source_sha256"] = "changed"
+    monkeypatch.setattr(resume, "_source_provenance_compatible", lambda *_: False)
     with pytest.raises(ValueError, match="source_sha256"):
         resume.prepare(path)
 

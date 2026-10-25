@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import copy
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -27,17 +28,27 @@ sys.path.insert(0, str(ROOT))
 import run_ablation as ab
 
 
+def _normalized_source_provenance(names):
+    sources = {}
+    for name in names:
+        path = ROOT / name
+        with path.open("r", encoding="utf-8", newline=None) as stream:
+            sources[name] = hashlib.sha256(stream.read().encode("utf-8")).hexdigest()
+    return {"sources": sources, "source_sha256": ab.digest_json(sources)}
+
+
 def _source_provenance_compatible(current, original):
-    if current["sources"] == original["sources"] and current["source_sha256"] == original["source_sha256"]:
+    names = set(original["sources"]) | set(current["sources"])
+    normalized = _normalized_source_provenance(names)
+    if normalized == {"sources": original["sources"], "source_sha256": original["source_sha256"]}:
         return True
     # The checkpoint predates the Windows-only RSS accounting fix. Permit exactly
     # that known non-model change while retaining strict hashes for every other source.
-    source_names = set(original["sources"]) | set(current["sources"])
-    changed = {name for name in source_names
-               if current["sources"].get(name) != original["sources"].get(name)}
+    changed = {name for name in set(original["sources"]) | set(normalized["sources"])
+               if normalized["sources"].get(name) != original["sources"].get(name)}
     return (os.name == "nt" and changed == {"run_ablation.py"}
             and original["sources"].get("run_ablation.py") == ORIGINAL_RUN_ABLATION_SHA256
-            and current["sources"].get("run_ablation.py") == WINDOWS_PORTABLE_RUN_ABLATION_SHA256)
+            and normalized["sources"].get("run_ablation.py") == WINDOWS_PORTABLE_RUN_ABLATION_SHA256)
 
 
 def prepare(checkpoint, data_dir=None):

@@ -20,7 +20,10 @@ import json
 import os
 from pathlib import Path
 import platform
-import resource
+try:
+    import resource
+except ModuleNotFoundError:  # pragma: no cover - exercised on Windows
+    resource = None
 import subprocess
 import tempfile
 import time
@@ -230,11 +233,38 @@ def require_api(evaluator):
         raise RuntimeError(f"corrected rolling API missing explicit parameters: {sorted(missing)}")
 
 
+def _peak_rss_kib():
+    if resource is not None:
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+            _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
+                        ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                        ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
+
+        counters = PROCESS_MEMORY_COUNTERS()
+        counters.cb = ctypes.sizeof(counters)
+        try:
+            handle = ctypes.windll.kernel32.GetCurrentProcess()
+            if ctypes.windll.psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
+                return counters.PeakWorkingSetSize // 1024
+        except (AttributeError, OSError):
+            pass
+    return None
+
+
 def cost(start_wall, start_cpu):
     return {"wall_seconds": time.perf_counter() - start_wall,
             "cpu_seconds": time.process_time() - start_cpu,
-            "process_peak_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
-            "rss_scope": "process_lifetime_high_water_mark_linux_not_incremental"}
+            "process_peak_rss_kib": _peak_rss_kib(),
+            "rss_scope": ("process_lifetime_high_water_mark_linux_not_incremental"
+                           if resource is not None else "process_peak_working_set_windows"),
+}
 
 
 def run_factorial(frame, config, evaluator, *, checkpoint=lambda cells: None):

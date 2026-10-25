@@ -23,6 +23,12 @@ Current protocol v6 reserves a history-only warmup and constructs training examp
 
 This repository contains a **methodology-validity study**, not evidence of production lift. The canonical historical protocol-v4 KION result is `results/kion_50k_protocol_v4.json`: 50,000 selected users, 285,343 retained interactions, three seeds, and two expanding temporal folds. Its protocol-v4 candidate correction is authoritative; earlier 50k JSONs are provenance only (see Section 5). The run's stderr records 1:58:19 elapsed and 2,509,416 KiB peak RSS.
 
+### Post-result implementation corrections
+
+After the completed v6 factorial run, code review identified two behaviors that have now been corrected in the current source: `fit_lgbm` now early-stops on AUC only (rather than also considering LightGBM's default binary logloss), and `forward_select` filters train-constant candidates before applying its candidate budget. The checked-in v6 JSON and its reported metrics are immutable historical results produced before these corrections; they must not be presented as results from the current source. The stopping-policy correction can change fitted models across methods, and the selector correction changes the `auto_forward` candidate pool (and potentially the descriptive `selected` method). Primary `auto_gain` selection itself is unchanged by the candidate-pool fix, but it is affected by the AUC-only stopping change. No post-correction research run has been completed. To make claims about the corrected implementation, create a new provenance lock and rerun; do not edit or overwrite historical results.
+
+The 10k v6 result was generated before the post-result implementation corrections described above; those stored metrics belong to their recorded source revision, not the current checkout. Preserve the JSON as historical evidence and use a new lock/output path for any rerun.
+
 On the canonical result, `auto_gain` differs from `manual` by +0.00137 test AUC and +0.21927 sampled NDCG@10 averaged over six fold/seed cells. Decayed popularity remains stronger on sampled NDCG@10 (0.52138). These are offline, protocol-conditional observations—not causal, impression-level, or production-lift claims.
 
 ### Completed protocol-v6 pilot

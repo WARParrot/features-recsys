@@ -90,12 +90,26 @@ def forward_select(
             raise ValueError(f"{name} missing selection columns: {sorted(missing)}")
         if frame["binary_label"].nunique() != 2:
             raise ValueError(f"{name} must contain both label classes for selection AUC")
-    candidate_pool = budgeted_candidate_order(candidates)
+    candidate_order = budgeted_candidate_order(candidates)
+    if max_candidates is not None and max_candidates <= 0:
+        raise ValueError("max_candidates must be positive or None")
+    original_budget = (
+        candidate_order if max_candidates is None else candidate_order[:max_candidates]
+    )
+    constant_candidates = {
+        column for column in candidate_order
+        if train[column].nunique(dropna=False) <= 1
+    }
+    candidate_pool = [
+        column for column in candidate_order if column not in constant_candidates
+    ]
     if max_candidates is not None:
-        if max_candidates <= 0:
-            raise ValueError("max_candidates must be positive or None")
         candidate_pool = candidate_pool[:max_candidates]
     selected = list(dict.fromkeys(base_columns))
+    terminal_constants = [
+        column for column in original_budget
+        if column in constant_candidates and column not in selected
+    ]
     remaining = sorted(column for column in candidate_pool if column not in selected)
     chosen_features = []
     history = []
@@ -114,6 +128,16 @@ def forward_select(
         )
     if not np.isfinite(previous_score):
         raise ValueError("forward_select: nonfinite base AUC")
+    if not remaining and terminal_constants and k > 0:
+        history.append({
+            "step": 1, "feature": None, "score": None,
+            "previous_score": previous_score, "improvement": None,
+            "candidates_evaluated": len(terminal_constants),
+            "selection_interval": selection_interval,
+            "accepted": False,
+            "reason": "no_nonconstant_candidate_with_finite_score",
+        })
+        return selected, chosen_features, history
     for step in range(1, min(k, len(remaining)) + 1):
         best_score, best_column = -np.inf, None
         candidates_evaluated = 0

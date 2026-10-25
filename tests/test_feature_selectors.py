@@ -40,6 +40,28 @@ def test_forward_selection_minimum_improvement_is_measured_from_base():
     assert history[0]["reason"] in {"nonpositive_improvement", "below_min_improvement"}
 
 
+def test_forward_budget_skips_leading_constants_before_truncation():
+    train = _frame(0).assign(
+        user__a_zero=0,
+        user__b_zero=0,
+        user__z_signal=lambda frame: frame["binary_label"],
+    )
+    selected, added, history = forward_select(
+        train,
+        train,
+        ["user__z_signal", "user__b_zero", "user__a_zero"],
+        k=1,
+        max_candidates=1,
+    )
+
+    assert selected == added == ["user__z_signal"]
+    assert len(history) == 1
+    assert history[0]["feature"] == "user__z_signal"
+    assert "accepted" not in history[0]
+    assert history[0]["improvement"] > 0
+    assert history[0]["candidates_evaluated"] == 1
+
+
 def test_forward_selection_reports_budget_and_selection_interval():
     train = _frame(0)
     select = _frame(1)

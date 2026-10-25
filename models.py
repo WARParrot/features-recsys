@@ -53,7 +53,10 @@ def fit_lgbm(train, valid, columns, category_columns=(), config=None, rounds=100
     _validate_features(train, columns, "train")
     _validate_features(valid, columns, "valid")
     categories = [column for column in category_columns if column in columns]
-    model = LGBMClassifier(**_params(config, rounds, random_state))
+    params = _params(config, rounds, random_state)
+    # The validation metric is the primary AUC below, regardless of model config.
+    params["metric"] = "None"
+    model = LGBMClassifier(**params)
     train_matrix = matrix(train, columns, categories)
     valid_matrix = matrix(valid, columns, categories)
     model.fit(
@@ -61,7 +64,7 @@ def fit_lgbm(train, valid, columns, category_columns=(), config=None, rounds=100
         train["binary_label"],
         eval_set=[(valid_matrix, valid["binary_label"])],
         eval_metric="auc",
-        callbacks=[early_stopping(50, verbose=False)],
+        callbacks=[early_stopping(50, first_metric_only=True, verbose=False)],
         categorical_feature=categories or "auto",
     )
     return model

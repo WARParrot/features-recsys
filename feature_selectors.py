@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
@@ -73,13 +76,24 @@ def forward_select(
     min_improvement=0.0,
     max_candidates=60,
     selection_interval="select",
+    return_metadata=False,
 ):
     """Select only finite, strictly improving candidates.
 
     History includes a terminal rejected step with ``accepted=False`` and a
     reason; use ``chosen_features`` rather than history length for additions.
     Empty/constant bases use intercept-only AUC 0.5 for the first comparison.
+    When requested, input provenance uses the unique family-balanced order before
+    filtering; ``effective_pool`` records that order after train filtering/capping.
+    Set ``return_metadata=True`` to append selection-pool provenance as a fourth
+    return value; the default three-value API is unchanged.
     """
+    if max_candidates is not None and (
+        not isinstance(max_candidates, (int, np.integer))
+        or isinstance(max_candidates, (bool, np.bool_))
+        or max_candidates <= 0
+    ):
+        raise ValueError("max_candidates must be a positive integer or None")
     if not np.isfinite(min_improvement) or min_improvement < 0:
         raise ValueError("min_improvement must be finite and nonnegative")
     base_columns = list(dict.fromkeys(base_columns))
@@ -91,8 +105,6 @@ def forward_select(
         if frame["binary_label"].nunique() != 2:
             raise ValueError(f"{name} must contain both label classes for selection AUC")
     candidate_order = budgeted_candidate_order(candidates)
-    if max_candidates is not None and max_candidates <= 0:
-        raise ValueError("max_candidates must be positive or None")
     original_budget = (
         candidate_order if max_candidates is None else candidate_order[:max_candidates]
     )
@@ -105,6 +117,23 @@ def forward_select(
     ]
     if max_candidates is not None:
         candidate_pool = candidate_pool[:max_candidates]
+    candidate_metadata = {
+        "effective_pool": list(candidate_pool),
+        "effective_pool_sha256": hashlib.sha256(
+            json.dumps(
+                candidate_pool, ensure_ascii=True, separators=(",", ":")
+            ).encode("ascii")
+        ).hexdigest(),
+        "ordered_candidate_input_sha256": hashlib.sha256(
+            json.dumps(
+                candidate_order, ensure_ascii=True, separators=(",", ":")
+            ).encode("ascii")
+        ).hexdigest(),
+        "ordered_candidate_input_count": int(len(candidate_order)),
+        "train_constant_candidates_removed": int(len(constant_candidates)),
+        "max_candidates": None if max_candidates is None else int(max_candidates),
+        "effective_pool_size": int(len(candidate_pool)),
+    }
     selected = list(dict.fromkeys(base_columns))
     terminal_constants = [
         column for column in original_budget
@@ -137,7 +166,8 @@ def forward_select(
             "accepted": False,
             "reason": "no_nonconstant_candidate_with_finite_score",
         })
-        return selected, chosen_features, history
+        result = (selected, chosen_features, history)
+        return (*result, candidate_metadata) if return_metadata else result
     for step in range(1, min(k, len(remaining)) + 1):
         best_score, best_column = -np.inf, None
         candidates_evaluated = 0
@@ -197,4 +227,5 @@ def forward_select(
             }
         )
         previous_score = best_score
-    return selected, chosen_features, history
+    result = (selected, chosen_features, history)
+    return (*result, candidate_metadata) if return_metadata else result

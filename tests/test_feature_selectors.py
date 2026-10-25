@@ -62,6 +62,52 @@ def test_forward_budget_skips_leading_constants_before_truncation():
     assert history[0]["candidates_evaluated"] == 1
 
 
+@pytest.mark.parametrize("max_candidates", [None, 1, 2, np.int32(1), np.int64(2)])
+def test_forward_max_candidates_accepts_none_and_positive_integers(max_candidates):
+    frame = _frame(0)
+    selected, added, history = forward_select(
+        frame,
+        frame,
+        ["feature_a"],
+        max_candidates=max_candidates,
+        k=0,
+    )
+
+    assert selected == added == history == []
+
+
+@pytest.mark.parametrize(
+    "max_candidates",
+    [
+        True,
+        False,
+        np.bool_(True),
+        0,
+        -1,
+        1.0,
+        1.5,
+        np.nan,
+        np.inf,
+        -np.inf,
+        "1",
+        object(),
+    ],
+)
+def test_forward_max_candidates_rejects_non_positive_or_non_integer_values(max_candidates):
+    frame = _frame(0)
+    with pytest.raises(
+        ValueError,
+        match="max_candidates must be a positive integer or None",
+    ):
+        forward_select(
+            frame,
+            frame,
+            ["feature_a"],
+            max_candidates=max_candidates,
+            k=0,
+        )
+
+
 def test_forward_selection_reports_budget_and_selection_interval():
     train = _frame(0)
     select = _frame(1)

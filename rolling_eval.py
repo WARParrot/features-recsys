@@ -247,7 +247,7 @@ def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, for
     auto_select, auto_config = tune_model(
         train, select, top_auto, random_state=state
     )
-    forward_columns, forward_added, forward_history = forward_select(
+    forward_columns, forward_added, forward_history, forward_provenance = forward_select(
         train,
         select,
         auto_columns,
@@ -257,6 +257,7 @@ def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, for
         max_candidates=forward_max_candidates,
         random_state=state,
         selection_interval=f"fold_{fold}_select",
+        return_metadata=True,
     )
     forward_select_auc, forward_config = tune_model(
         train, select, forward_columns, categorical, random_state=state
@@ -433,6 +434,7 @@ def _fold_result(log, parts, seed, fold, dataset, forward_max_candidates=60, for
             for name, scores in rankings.items() if "query_metrics" in scores
         },
         "forward_features": len(forward_added),
+        "forward_selection_provenance": forward_provenance,
         "top_gain": list(gains.head(5).index),
         "forward_history": forward_history,
         "candidate_configuration": {

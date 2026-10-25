@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from candidate_eval import sampled_candidate_log
+from recsys_corrected_artifact.candidate_eval import sampled_candidate_log
 
 
 def _logs():

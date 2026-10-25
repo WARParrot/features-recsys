@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
 
-from auto_features import compute_specs, enumerate_specs, spec_name
-from causal_features import CausalIndex
-from feature_selectors import budgeted_candidate_order
+from recsys_corrected_artifact.auto_features import compute_specs, enumerate_specs, spec_name
+from recsys_corrected_artifact.causal_features import CausalIndex
+from recsys_corrected_artifact.feature_selectors import budgeted_candidate_order
 
 
 def _frame():

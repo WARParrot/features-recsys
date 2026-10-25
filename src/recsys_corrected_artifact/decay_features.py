@@ -1,5 +1,5 @@
 import pandas as pd
-from causal_features import CausalIndex
+from .causal_features import CausalIndex
 
 
 def build_decay_features(df, half_lives=(86400, 7 * 86400, 30 * 86400), source_mask=None, source_until=None):

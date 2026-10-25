@@ -6,9 +6,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from candidate_eval import candidate_features, score_candidate_sets
-from causal_features import CausalIndex, build_baseline_features
-from data import generate_synthetic
+from recsys_corrected_artifact.candidate_eval import candidate_features, score_candidate_sets
+from recsys_corrected_artifact.causal_features import CausalIndex, build_baseline_features
+from recsys_corrected_artifact.data import generate_synthetic
 
 
 def test_causal_features_are_invariant_to_appending_future_rows():
@@ -44,7 +44,8 @@ def test_cli_rejects_kion_single_split_before_loading_data():
     result = subprocess.run(
         [
             sys.executable,
-            "compare_methods.py",
+            "-m",
+            "recsys_corrected_artifact.compare_methods",
             "--kion-interactions",
             str(root / "missing-kion-interactions.csv"),
             "--evaluation",

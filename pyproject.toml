@@ -18,33 +18,14 @@ dependencies = [
 test = ["pytest==8.3.4"]
 
 [project.scripts]
-recsys-compare = "compare_methods:main"
-recsys-validate-results = "validate_protocol:main"
+recsys-compare = "recsys_corrected_artifact.compare_methods:main"
+recsys-validate-results = "recsys_corrected_artifact.validate_protocol:main"
 
-[tool.setuptools]
-py-modules = [
-  "auto_features",
-  "candidate_eval",
-  "causal_features",
-  "compare_methods",
-  "data",
-  "decay_features",
-  "diagnostics",
-  "experiment_contracts",
-  "feature_selectors",
-  "history",
-  "linear_model",
-  "metrics",
-  "mind_data",
-  "kion_data",
-  "models",
-  "pipeline",
-  "ranking_references",
-  "rolling_eval",
-  "run_experiments",
-  "run_ablation",
-  "validate_protocol",
-]
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

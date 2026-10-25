@@ -10,12 +10,12 @@ import sys
 from pathlib import Path
 
 try:
-    from data import generate_synthetic
-    from experiment_contracts import validate_run_collection
-    from mind_data import load_mind
-    from kion_data import load_kion
-    from pipeline import CONFIG_GRID, run_many, run_mind_many
-    from rolling_eval import run_rolling_many, summarize_rolling_runs
+    from .data import generate_synthetic
+    from .experiment_contracts import validate_run_collection
+    from .mind_data import load_mind
+    from .kion_data import load_kion
+    from .pipeline import CONFIG_GRID, run_many, run_mind_many
+    from .rolling_eval import run_rolling_many, summarize_rolling_runs
 except ModuleNotFoundError as exc:  # pragma: no cover - exercised in missing-env usage
     raise SystemExit(
         "recsys artifact dependencies are missing; install requirements.lock first"
@@ -67,21 +67,44 @@ def _code_revision():
 
 
 def _source_tree_hash(root=None):
-    """Hash tracked source/config inputs, excluding runtime and build outputs.
+    """Hash source/config inputs, excluding runtime and build outputs.
 
-    The manifest intentionally covers only the package's top-level Python modules
-    and dependency/configuration files. Results, caches, editable-install metadata,
-    virtual environments, and arbitrary nested files must not change provenance for
-    the same source snapshot.
+    The checked-in project uses a ``src`` package layout.  The optional ``root``
+    argument keeps the manifest helper useful for isolated temporary fixtures in
+    tests, where source modules may still live at the fixture root.
     """
-    root = Path(root) if root is not None else Path(__file__).resolve().parent
-    files = sorted(
-        path for path in root.iterdir()
-        if path.is_file() and (
-            path.suffix in {".py", ".toml", ".lock"}
-            or path.name in {"requirements.txt", "requirements.lock"}
+    package_root = Path(__file__).resolve().parent
+    if root is None:
+        project_root = (
+            package_root.parents[2]
+            if package_root.parent.name == "src"
+            else None
         )
-    )
+        root = project_root if project_root and (project_root / "pyproject.toml").is_file() else package_root.parent
+    else:
+        root = Path(root)
+    package_root = root / "src" / "recsys_corrected_artifact"
+    installed_package = root / "recsys_corrected_artifact"
+    if package_root.is_dir():
+        files = sorted(package_root.rglob("*.py"))
+        files.extend(
+            path for path in (
+                root / "pyproject.toml",
+                root / "requirements.txt",
+                root / "requirements.lock",
+                root / "uv.lock",
+            ) if path.is_file()
+        )
+    elif installed_package.is_dir():
+        files = sorted(installed_package.rglob("*.py"))
+    else:
+        files = sorted(
+            path for path in root.iterdir()
+            if path.is_file() and (
+                path.suffix in {".py", ".toml", ".lock"}
+                or path.name in {"requirements.txt", "requirements.lock"}
+            )
+        )
     files.extend(sorted((root / "tests").glob("test_*.py")) if (root / "tests").is_dir() else [])
     digest = hashlib.sha256()
     manifest = []

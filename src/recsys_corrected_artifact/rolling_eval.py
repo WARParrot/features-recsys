@@ -7,8 +7,8 @@ import hashlib
 import numpy as np
 import pandas as pd
 
-from auto_features import compute_specs, enumerate_specs
-from candidate_eval import (
+from .auto_features import compute_specs, enumerate_specs
+from .candidate_eval import (
     candidate_features,
     causal_group_popularity_scores,
     causal_item_popularity_scores,
@@ -17,16 +17,16 @@ from candidate_eval import (
     score_candidate_sets,
     score_logged_impressions,
 )
-from causal_features import CATEGORICAL_FEATURES, BASELINE_FEATURES, build_baseline_features
-from data import rolling_time_splits, split_metadata
-from decay_features import build_decay_features
-from feature_selectors import forward_select, gain_top_k
-from linear_model import fit_logistic, logistic_auc, tune_logistic
-from mind_data import summarize_mind_metadata
-from models import auc, fit_lgbm, predict_proba
-from pipeline import tune_model
-from ranking_references import score_reference_rankings
-from metrics import (
+from .causal_features import CATEGORICAL_FEATURES, BASELINE_FEATURES, build_baseline_features
+from .data import rolling_time_splits, split_metadata
+from .decay_features import build_decay_features
+from .feature_selectors import forward_select, gain_top_k
+from .linear_model import fit_logistic, logistic_auc, tune_logistic
+from .mind_data import summarize_mind_metadata
+from .models import auc, fit_lgbm, predict_proba
+from .pipeline import tune_model
+from .ranking_references import score_reference_rankings
+from .metrics import (
     query_weighted_cluster_bootstrap_mean_ci,
     paired_query_weighted_cluster_bootstrap_mean_ci,
     cluster_bootstrap_auc_comparison,
@@ -200,7 +200,7 @@ def _fold_features(log, parts, history_mode, feature_space="expanded", training_
 
 def _fold_diagnostic_payload(log, parts, full, predictor_columns):
     """Exact role membership identities and predictor-only descriptive stats."""
-    from diagnostics import fold_diagnostics
+    from .diagnostics import fold_diagnostics
     predictor_columns = list(dict.fromkeys(predictor_columns))
     return {
         "split_fingerprint": {
@@ -480,7 +480,7 @@ def run_rolling_frame(
         if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)) or value < minimum:
             raise ValueError(f"{name} must be an integer >= {minimum}")
     if candidate_catalog == "full":
-        from candidate_eval import validate_static_catalog
+        from .candidate_eval import validate_static_catalog
         item_catalog = validate_static_catalog(item_catalog)
     if isinstance(training_blocks, (bool, np.bool_)) or not isinstance(training_blocks, (int, np.integer)) or training_blocks < 1:
         raise ValueError("training_blocks must be a positive integer")

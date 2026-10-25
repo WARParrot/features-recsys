@@ -2,7 +2,7 @@ from itertools import product
 
 import pandas as pd
 
-from causal_features import CausalIndex, WINDOWS, safe_div
+from .causal_features import CausalIndex, WINDOWS, safe_div
 
 
 KEY_GROUPS = [

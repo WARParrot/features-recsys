@@ -2,7 +2,7 @@
 
 ## Evidence and validity checks
 
-Primary artifact: [`results/kion_10k_v6_factorial.json`](../results/kion_10k_v6_factorial.json), status **completed**, 12/12 completed cells; fixed-cohort tooling smoke passed. Separate [configuration lock](../results/kion_10k_v6_factorial.lock.json) and [completion log](../results/kion_10k_v6_factorial.stderr.log) are retained. Source revision `388e48848099f352d05067e556fff882015a3c2e`, source SHA256 `f651ee341147ceed0117491a0557a02085d39d3de696ad6f7e08b351e2a3e055`, lock SHA256 `5ff59a75b37cd13d6110af9b5afe284f021d428b5449c21c1e96f2317388ff78`.
+Primary artifact: [`results/archive/v6/kion_10k_v6_factorial.json`](../../results/archive/v6/kion_10k_v6_factorial.json), status **completed**, 12/12 completed cells; fixed-cohort tooling smoke passed. Separate [configuration lock](../../results/archive/v6/kion_10k_v6_factorial.lock.json) and [completion log](../../results/archive/v6/kion_10k_v6_factorial.stderr.log) are retained. Source revision `388e48848099f352d05067e556fff882015a3c2e`, source SHA256 `f651ee341147ceed0117491a0557a02085d39d3de696ad6f7e08b351e2a3e055`, lock SHA256 `5ff59a75b37cd13d6110af9b5afe284f021d428b5449c21c1e96f2317388ff78`.
 
 - 10,000 users, 55,922 retained observed watch records, 5,090 cohort items; complete recorded histories for the fixed user sample, sampling seed 42.
 - Four factorial variants: prequential/snapshot × base/expanded grammar; model seeds 42/43/44; three temporal folds per variant/seed, **36 fold evaluations total**.
@@ -10,7 +10,7 @@ Primary artifact: [`results/kion_10k_v6_factorial.json`](../results/kion_10k_v6_
 - Common 20% timestamp-group warmup; snapshot cadence target four, not a guarantee of exactly four blocks; test remains frozen for the full role.
 - Uniform 99 historical unseen negatives and cap400 attempted positives per fold. Each variant totals **3,287 fold×seed ranking queries**; these are repeated evaluations, not unique independent users/queries. Test row counts are 7,490 / 8,679 / 10,242 per fold, repeated across seeds and variants.
 
-This follows the locked exploratory design in [EXPERIMENT_PLAN_V6.md](../EXPERIMENT_PLAN_V6.md). It is not preregistration on fresh uninspected data. The separate 1k pilot and v4/v5 runs must not be pooled with this result.
+This follows the locked exploratory design in [EXPERIMENT_PLAN_V6.md](../plans/EXPERIMENT_PLAN_V6.md). It is not preregistration on fresh uninspected data. The separate 1k pilot and v4/v5 runs must not be pooled with this result.
 
 ## Quality results
 

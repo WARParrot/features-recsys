@@ -2,7 +2,7 @@
 
 ## Scope and verdict
 
-Read-only audit of revision `9a62d2789ad99a3591d8dc7a97c4d1eff9d920aa` and `results/kion_50k_protocol_v5.json`. Only this new report was written; no production changes, commits, subagents, model fitting, or model experiment. Existing result files were untracked at initial inspection. Other threads were active; the source-manifest match below describes the audit's initial snapshot, not any subsequent changes by others.
+Read-only audit of revision `9a62d2789ad99a3591d8dc7a97c4d1eff9d920aa` and `results/archive/v5/kion_50k_protocol_v5.json`. Only this new report was written; no production changes, commits, subagents, model fitting, or model experiment. Existing result files were untracked at initial inspection. Other threads were active; the source-manifest match below describes the audit's initial snapshot, not any subsequent changes by others.
 
 **Decisive finding: the frozen-role implementation is temporally conservative but degenerates training. It does not provide a valid test of learned gain-based feature selection.** Both folds' train role starts at the first dataset timestamp. Its strict preceding prefix is empty, even when the second fold's train block expands. Observed first-fold training has **19/19 manual-history, 144/144 generated, and 24/24 decay features constant zero**. Only the two categorical manual predictors vary. All six saved `auto_gain_select_auc` values are exactly 0.5. The apparently favorable final `auto_gain` results do not rescue the selection claim: final refitting includes select rows with populated history, whereas feature/configuration selection had none.
 
@@ -144,7 +144,7 @@ Run from `/root/t-lab/recsys_corrected_artifact`, preserving the audited source 
 ```bash
 git rev-parse HEAD
 git status --short
-sha256sum results/kion_50k_protocol_v5.json datasets/kion/{interactions,users,items}.csv
+sha256sum results/archive/v5/kion_50k_protocol_v5.json datasets/kion/{interactions,users,items}.csv
 PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv/bin/python -u - <<'PY'
 import json
 import numpy as np
@@ -154,7 +154,7 @@ from data import rolling_time_splits
 from causal_features import build_baseline_features, BASELINE_FEATURES
 from auto_features import enumerate_specs, compute_specs, spec_name
 from decay_features import build_decay_features
-x = json.load(open('results/kion_50k_protocol_v5.json'))
+x = json.load(open('results/archive/v5/kion_50k_protocol_v5.json'))
 log = load_kion('datasets/kion/interactions.csv', 'datasets/kion/users.csv',
                 'datasets/kion/items.csv', max_users=50000, seed=42)
 log, folds = rolling_time_splits(log, n_folds=2)

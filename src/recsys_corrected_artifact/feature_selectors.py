@@ -9,7 +9,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 
-from models import fit_lgbm_fixed
+from .models import fit_lgbm_fixed
 
 
 def gain_top_k(train, candidate_columns, k=40, random_state=17):

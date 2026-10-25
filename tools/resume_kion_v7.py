@@ -3,8 +3,8 @@
 
 Run from the project root, with the same pinned Python/packages and thread settings:
   OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 .venv/bin/python \
-    tools/resume_kion_v7.py --checkpoint results/kion_10k_v7_corrected.json \
-    --data-dir datasets/kion --output results/kion_10k_v7_resumed.json --inspect
+    tools/resume_kion_v7.py --checkpoint results/current/kion_10k_v7_final.json \
+    --data-dir datasets/kion --output results/current/kion_10k_v7_resumed.json --inspect
 Remove --inspect to execute. Completed cells are reused; running cells restart.
 The original process/checkpoint are never changed. Output must not exist.
 """
@@ -15,40 +15,36 @@ import copy
 from datetime import datetime, timezone
 import hashlib
 import json
-import os
 from pathlib import Path
 import socket
 import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-WINDOWS_PORTABLE_RUN_ABLATION_SHA256 = "312c20853fffa20cc3f81a04ef51a8b2841fb4e6fdc5f75548d20ec20a05b9e4"
-ORIGINAL_RUN_ABLATION_SHA256 = "949cc5a7bb42657899967cd9f34729ab36468c34d004dba023372e5216863adf"
-sys.path.insert(0, str(ROOT))
-import run_ablation as ab
+SRC = ROOT / "src"
+sys.path.insert(0, str(SRC))
+from recsys_corrected_artifact import run_ablation as ab
 
 
 def _normalized_source_provenance(names):
     sources = {}
     for name in names:
         path = ROOT / name
+        if not path.exists() and not name.startswith("src/"):
+            path = SRC / "recsys_corrected_artifact" / name
         with path.open("r", encoding="utf-8", newline=None) as stream:
             sources[name] = hashlib.sha256(stream.read().encode("utf-8")).hexdigest()
     return {"sources": sources, "source_sha256": ab.digest_json(sources)}
 
 
 def _source_provenance_compatible(current, original):
+    """Require an exact source match before continuing a checkpoint."""
     names = set(original["sources"]) | set(current["sources"])
     normalized = _normalized_source_provenance(names)
-    if normalized == {"sources": original["sources"], "source_sha256": original["source_sha256"]}:
-        return True
-    # The checkpoint predates the Windows-only RSS accounting fix. Permit exactly
-    # that known non-model change while retaining strict hashes for every other source.
-    changed = {name for name in set(original["sources"]) | set(normalized["sources"])
-               if normalized["sources"].get(name) != original["sources"].get(name)}
-    return (os.name == "nt" and changed == {"run_ablation.py"}
-            and original["sources"].get("run_ablation.py") == ORIGINAL_RUN_ABLATION_SHA256
-            and normalized["sources"].get("run_ablation.py") == WINDOWS_PORTABLE_RUN_ABLATION_SHA256)
+    return normalized == {
+        "sources": original["sources"],
+        "source_sha256": original["source_sha256"],
+    }
 
 
 def prepare(checkpoint, data_dir=None):
@@ -131,8 +127,8 @@ def execute(checkpoint, output, data_dir=None, inspect_only=False):
     wall, cpu = time.perf_counter(), time.process_time()
     ab.atomic_json(output, artifact)
     try:
-        from kion_data import load_kion
-        from rolling_eval import run_rolling_frame
+        from recsys_corrected_artifact.kion_data import load_kion
+        from recsys_corrected_artifact.rolling_eval import run_rolling_frame
         frame = load_kion(config["inputs"]["interactions"], users=config["inputs"].get("users"),
                           items=config["inputs"].get("items"), max_users=config["max_users"],
                           seed=config["cohort_seed"], watch_threshold=config["watch_threshold"])

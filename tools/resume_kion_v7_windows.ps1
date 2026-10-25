@@ -11,13 +11,13 @@ $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $ResumeScript = Join-Path $PSScriptRoot "resume_kion_v7.py"
 
 if ([string]::IsNullOrWhiteSpace($Checkpoint)) {
-    $Checkpoint = Join-Path $ProjectRoot "results\kion_10k_v7_corrected.json"
+    throw "Pass -Checkpoint for a run produced by a matching source revision. The retained pre-package-layout checkpoint cannot be resumed from this checkout."
 }
 if ([string]::IsNullOrWhiteSpace($DataDir)) {
     $DataDir = Join-Path $ProjectRoot "datasets\kion"
 }
 if ([string]::IsNullOrWhiteSpace($Output)) {
-    $Output = Join-Path $ProjectRoot "results\kion_10k_v7_resumed.json"
+    $Output = Join-Path $ProjectRoot "results\current\kion_10k_v7_resumed.json"
 }
 
 $Python = Join-Path $ProjectRoot ".venv\Scripts\python.exe"

@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from mind_data import explode_mind_impressions, load_mind, summarize_mind_metadata
+from recsys_corrected_artifact.mind_data import explode_mind_impressions, load_mind, summarize_mind_metadata
 
 
 def test_explode_mind_impressions_preserves_impression_groups_and_labels():

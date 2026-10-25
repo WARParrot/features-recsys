@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from metrics import (
+from recsys_corrected_artifact.metrics import (
     bootstrap_mean_ci,
     paired_bootstrap_mean_ci,
     cluster_bootstrap_mean_ci,
@@ -39,7 +39,7 @@ def test_paired_bootstrap_requires_aligned_lengths():
 
 def test_user_cluster_bootstrap_auc_reports_event_estimand_and_paired_effect():
     from sklearn.metrics import roc_auc_score
-    from metrics import cluster_bootstrap_auc_comparison
+    from recsys_corrected_artifact.metrics import cluster_bootstrap_auc_comparison
 
     labels = np.array([0, 1, 0, 1, 0, 1])
     users = np.array(["u1", "u1", "u2", "u2", "u2", "u2"])
@@ -102,7 +102,7 @@ def test_user_cluster_bootstrap_auc_reports_event_estimand_and_paired_effect():
 
 
 def test_user_cluster_auc_bootstrap_omits_single_class_resamples():
-    from metrics import cluster_bootstrap_auc_comparison
+    from recsys_corrected_artifact.metrics import cluster_bootstrap_auc_comparison
 
     result = cluster_bootstrap_auc_comparison(
         [0, 0, 1, 1],
@@ -120,7 +120,7 @@ def test_user_cluster_auc_bootstrap_omits_single_class_resamples():
 
 
 def test_user_cluster_bootstrap_auc_requires_aligned_inputs_and_baseline():
-    from metrics import cluster_bootstrap_auc_comparison
+    from recsys_corrected_artifact.metrics import cluster_bootstrap_auc_comparison
 
     with pytest.raises(ValueError, match="same length"):
         cluster_bootstrap_auc_comparison(

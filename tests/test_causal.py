@@ -2,12 +2,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from data import generate_synthetic, rolling_time_splits, split_metadata, time_split
-from history import build_histories
+from recsys_corrected_artifact.data import generate_synthetic, rolling_time_splits, split_metadata, time_split
+from recsys_corrected_artifact.history import build_histories
 
 
 def test_causal_aggregate_excludes_current_and_all_equal_timestamp_events():
-    from causal_features import causal_agg
+    from recsys_corrected_artifact.causal_features import causal_agg
 
     df = pd.DataFrame(
         {
@@ -22,7 +22,7 @@ def test_causal_aggregate_excludes_current_and_all_equal_timestamp_events():
 
 
 def test_window_lower_boundary_is_inclusive_and_current_is_excluded():
-    from causal_features import causal_agg
+    from recsys_corrected_artifact.causal_features import causal_agg
 
     df = pd.DataFrame(
         {
@@ -54,7 +54,7 @@ def test_history_replays_prior_events_and_preserves_context_across_split():
 
 
 def test_snapshot_mask_excludes_unavailable_labels():
-    from causal_features import causal_agg
+    from recsys_corrected_artifact.causal_features import causal_agg
 
     df = pd.DataFrame(
         {
@@ -79,7 +79,7 @@ def test_snapshot_mask_excludes_unavailable_labels():
 @pytest.mark.parametrize("operation", ["sum", "mean", "decay"])
 @pytest.mark.parametrize("selection", ["mask", "cutoff", "both"])
 def test_nonfinite_inactive_feedback_is_irrelevant(operation, selection):
-    from causal_features import CausalIndex
+    from recsys_corrected_artifact.causal_features import CausalIndex
 
     # Shuffled rows, two keys, timestamp ties, and an inclusive window boundary.
     df = pd.DataFrame({
@@ -122,7 +122,7 @@ def test_nonfinite_inactive_feedback_is_irrelevant(operation, selection):
 @pytest.mark.parametrize("bad_value", [np.nan, np.inf, -np.inf])
 @pytest.mark.parametrize("operation", ["sum", "mean", "decay"])
 def test_active_nonfinite_feedback_is_rejected(operation, bad_value):
-    from causal_features import CausalIndex
+    from recsys_corrected_artifact.causal_features import CausalIndex
 
     # Validate every active source, even one not yet used by a query.
     df = pd.DataFrame({
@@ -141,7 +141,7 @@ def test_active_nonfinite_feedback_is_rejected(operation, bad_value):
 
 @pytest.mark.parametrize("feedback_column", ["is_click", "is_positive_watch"])
 def test_baseline_features_ignore_masked_nonfinite_feedback(feedback_column):
-    from causal_features import BASELINE_FEATURES, build_baseline_features
+    from recsys_corrected_artifact.causal_features import BASELINE_FEATURES, build_baseline_features
 
     frame = pd.DataFrame({
         "event_id": range(5), "user": [1] * 5, "item": [10] * 5,
@@ -160,7 +160,7 @@ def test_baseline_features_ignore_masked_nonfinite_feedback(feedback_column):
 
 @pytest.mark.parametrize("bad_weight", [np.nan, np.inf, -np.inf])
 def test_nonfinite_source_mask_is_rejected(bad_weight):
-    from causal_features import CausalIndex
+    from recsys_corrected_artifact.causal_features import CausalIndex
 
     frame = pd.DataFrame({"event_id": [0], "user": [1], "timestamp": [0]})
     index = CausalIndex(frame, ["user"])
@@ -171,7 +171,7 @@ def test_nonfinite_source_mask_is_rejected(bad_weight):
 
 
 def test_source_cutoff_does_not_mutate_mask():
-    from causal_features import CausalIndex
+    from recsys_corrected_artifact.causal_features import CausalIndex
 
     frame = pd.DataFrame({
         "event_id": [0, 1, 2], "user": [1] * 3,
@@ -187,7 +187,7 @@ def test_source_cutoff_does_not_mutate_mask():
 
 
 def test_sampled_candidate_log_records_sampling_protocol():
-    from candidate_eval import sampled_candidate_log
+    from recsys_corrected_artifact.candidate_eval import sampled_candidate_log
 
     full_log = pd.DataFrame(
         {
@@ -213,7 +213,7 @@ def test_sampled_candidate_log_records_sampling_protocol():
 
 
 def test_sampled_candidates_use_history_for_seen_items_but_full_catalog_for_negatives():
-    from candidate_eval import sampled_candidate_log
+    from recsys_corrected_artifact.candidate_eval import sampled_candidate_log
 
     history = pd.DataFrame(
         {
@@ -283,7 +283,7 @@ def test_sampled_candidates_use_history_for_seen_items_but_full_catalog_for_nega
 
 
 def test_causal_item_popularity_does_not_see_current_or_future_events():
-    from candidate_eval import causal_item_popularity_scores
+    from recsys_corrected_artifact.candidate_eval import causal_item_popularity_scores
 
     full_log = pd.DataFrame({
         "event_id": [0, 1], "user": [1, 2], "item": [10, 20],
@@ -299,7 +299,7 @@ def test_causal_item_popularity_does_not_see_current_or_future_events():
 
 
 def test_causal_category_popularity_scores_prior_categories():
-    from candidate_eval import causal_group_popularity_scores
+    from recsys_corrected_artifact.candidate_eval import causal_group_popularity_scores
 
     full_log = pd.DataFrame(
         {
@@ -324,7 +324,7 @@ def test_causal_category_popularity_scores_prior_categories():
 
 
 def test_causal_item_popularity_scores_prior_item():
-    from candidate_eval import causal_item_popularity_scores
+    from recsys_corrected_artifact.candidate_eval import causal_item_popularity_scores
 
     full_log = pd.DataFrame({
         "event_id": [0, 1], "user": [1, 2], "item": [10, 10],
@@ -338,7 +338,7 @@ def test_causal_item_popularity_scores_prior_item():
 
 
 def test_decayed_popularity_scores_decay_each_key_lazily():
-    from candidate_eval import causal_item_popularity_scores
+    from recsys_corrected_artifact.candidate_eval import causal_item_popularity_scores
 
     full_log = pd.DataFrame({
         "event_id": [0, 1, 2], "item": [10, 20, 10],
@@ -356,7 +356,7 @@ def test_decayed_popularity_scores_decay_each_key_lazily():
 
 
 def test_snapshot_features_exclude_held_out_source_rows():
-    from causal_features import build_baseline_features
+    from recsys_corrected_artifact.causal_features import build_baseline_features
 
     frame = pd.DataFrame({
         "event_id": [0, 1, 2],
@@ -376,7 +376,7 @@ def test_snapshot_features_exclude_held_out_source_rows():
 
 
 def test_candidate_auto_features_fill_kion_feedback_placeholder():
-    from candidate_eval import candidate_features
+    from recsys_corrected_artifact.candidate_eval import candidate_features
 
     full_log = pd.DataFrame({
         "event_id": [0], "user": [1], "item": [10], "timestamp": [1],
@@ -393,7 +393,7 @@ def test_candidate_auto_features_fill_kion_feedback_placeholder():
 
 
 def test_candidate_auto_features_ignore_synthetic_candidate_labels():
-    from candidate_eval import candidate_features
+    from recsys_corrected_artifact.candidate_eval import candidate_features
 
     full_log = pd.DataFrame(
         {
@@ -447,7 +447,7 @@ def test_candidate_auto_features_ignore_synthetic_candidate_labels():
 
 
 def test_causal_index_matches_reference_for_shuffled_rows_and_masks():
-    from causal_features import CausalIndex
+    from recsys_corrected_artifact.causal_features import CausalIndex
 
     df = pd.DataFrame(
         {
@@ -487,7 +487,7 @@ def test_causal_index_matches_reference_for_shuffled_rows_and_masks():
 
 
 def test_decay_is_causal_and_excludes_same_timestamp():
-    from causal_features import CausalIndex
+    from recsys_corrected_artifact.causal_features import CausalIndex
 
     df = pd.DataFrame(
         {

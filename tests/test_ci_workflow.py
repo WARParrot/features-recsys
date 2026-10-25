@@ -12,5 +12,6 @@ def test_workflow_targets_repository_root_and_validates_canonical_artifact():
     assert "recsys_corrected_artifact/**" not in workflow
     assert "working-directory: recsys_corrected_artifact" not in workflow
     assert (
-        "python validate_protocol.py results/kion_50k_protocol_v4.json" in workflow
+        "python -m recsys_corrected_artifact.validate_protocol results/archive/v4/kion_50k_protocol_v4.json"
+        in workflow
     )

@@ -1,8 +1,8 @@
 # Historical Synthetic Smoke Results — NOT CURRENT, NOT KION
 
-These synthetic smoke values are retained for provenance only. They predate the snapshot-mask correction, are not KION results, and must not be used as current evidence or compared with the canonical KION protocol-v4 result (`results/kion_50k_protocol_v4.json`).
+These synthetic smoke values are retained for provenance only. They predate the snapshot-mask correction, are not KION results, and must not be used as current evidence or compared with the canonical KION protocol-v4 result (`../../results/archive/v4/kion_50k_protocol_v4.json`).
 
-Command: `python compare_methods.py --seeds 42,43 --n-events 10000`
+Command: `python -m recsys_corrected_artifact.compare_methods --seeds 42,43 --n-events 10000`
 
 | Metric | Mean | Std |
 |---|---:|---:|

@@ -13,7 +13,8 @@ def test_cli_single_split_json_passes_protocol_contract(tmp_path):
     result = subprocess.run(
         [
             sys.executable,
-            "compare_methods.py",
+            "-m",
+            "recsys_corrected_artifact.compare_methods",
             "--evaluation",
             "single_split",
             "--n-events",
@@ -41,7 +42,12 @@ def test_cli_single_split_json_passes_protocol_contract(tmp_path):
     assert payload["metadata"]["protocol_version"] == 4
 
     validation = subprocess.run(
-        [sys.executable, "validate_protocol.py", str(artifact)],
+        [
+            sys.executable,
+            "-m",
+            "recsys_corrected_artifact.validate_protocol",
+            str(artifact),
+        ],
         cwd=root,
         capture_output=True,
         text=True,

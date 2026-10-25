@@ -1,8 +1,8 @@
 import pandas as pd
 import pytest
 
-from candidate_eval import score_logged_impressions
-from metrics import mrr_at_k
+from recsys_corrected_artifact.candidate_eval import score_logged_impressions
+from recsys_corrected_artifact.metrics import mrr_at_k
 
 
 class _ScoreModel:
@@ -51,7 +51,7 @@ def test_ranking_metrics_document_empty_positive_group_policy():
         }
     )
 
-    from metrics import ndcg_at_k, recall_at_k
+    from recsys_corrected_artifact.metrics import ndcg_at_k, recall_at_k
 
     assert ndcg_at_k(frame, "score", label_col="label", group_col="query_id") == 0.5
     assert recall_at_k(frame, "score", label_col="label", group_col="query_id") == 1.0
@@ -65,7 +65,7 @@ def test_ranking_metrics_document_empty_positive_group_policy():
 
 
 def test_recall_at_k_uses_all_positives_as_denominator():
-    from metrics import recall_at_k
+    from recsys_corrected_artifact.metrics import recall_at_k
 
     frame = pd.DataFrame(
         {

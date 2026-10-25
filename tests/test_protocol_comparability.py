@@ -6,7 +6,7 @@ import json
 import pytest
 
 from test_protocol_validation import CANONICAL_V4, ROOT, _valid_kion_payload
-from validate_protocol import (
+from recsys_corrected_artifact.validate_protocol import (
     ProtocolValidationError,
     validate_protocol_files,
     validate_protocol_payload,
@@ -58,7 +58,7 @@ def _change_setting(payload, field, value):
 
 
 def test_immutable_v4_and_v5_standalone_are_accepted_but_not_comparable():
-    modern = ROOT / "results" / "kion_50k_protocol_v5.json"
+    modern = ROOT / "results" / "archive/v5/kion_50k_protocol_v5.json"
     assert validate_protocol_files([CANONICAL_V4])[0]["protocol_version"] == 4
     assert validate_protocol_files([modern])[0]["protocol_version"] == 4
     with pytest.raises(ProtocolValidationError, match="evaluation semantics"):

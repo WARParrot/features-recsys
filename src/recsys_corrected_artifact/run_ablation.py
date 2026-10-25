@@ -2,9 +2,9 @@
 
 Example (inspect the lock before executing)::
 
-    python run_ablation.py --dry-run --lock /tmp/ablation.lock.json \
+    python -m recsys_corrected_artifact.run_ablation --dry-run --lock /tmp/ablation.lock.json \
         --kion-interactions datasets/kion/interactions.csv
-    python run_ablation.py --execute-lock /tmp/ablation.lock.json \
+    python -m recsys_corrected_artifact.run_ablation --execute-lock /tmp/ablation.lock.json \
         --output /tmp/ablation.json
 
 The smoke gate uses a small complete-user subset of the ONE loaded KION frame.
@@ -36,7 +36,12 @@ import pandas as pd
 SCHEMA = "kion_factorial_ablation_v1"
 CELLS = tuple((history, space) for history in ("prequential", "snapshot")
               for space in ("base", "expanded"))
-ROOT = Path(__file__).resolve().parent
+PACKAGE_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = (
+    PACKAGE_ROOT.parents[1]
+    if PACKAGE_ROOT.parent.name == "src"
+    else PACKAGE_ROOT
+)
 
 
 def json_value(value):
@@ -85,11 +90,21 @@ def file_metadata(path):
 
 
 def provenance(inputs):
-    files = sorted(path for path in ROOT.iterdir() if path.is_file() and
-                   (path.suffix in {".py", ".toml", ".lock"} or path.name == "requirements.txt"))
-    sources = {path.name: file_metadata(path)["sha256"] for path in files}
+    files = sorted(PACKAGE_ROOT.rglob("*.py"))
+    files.extend(
+        path for path in (
+            PROJECT_ROOT / "pyproject.toml",
+            PROJECT_ROOT / "requirements.txt",
+            PROJECT_ROOT / "requirements.lock",
+            PROJECT_ROOT / "uv.lock",
+        ) if path.is_file()
+    )
+    sources = {
+        path.relative_to(PROJECT_ROOT).as_posix(): file_metadata(path)["sha256"]
+        for path in files
+    }
     try:
-        revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT,
+        revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=PROJECT_ROOT,
                                            stderr=subprocess.DEVNULL, text=True).strip()
     except (OSError, subprocess.CalledProcessError):
         revision = None
@@ -198,8 +213,8 @@ def preflight(frame, config):
     No retries, resampling or seed changes are permitted after a support failure.
     Candidate generation is repeated deterministically by the evaluator.
     """
-    from data import rolling_time_splits
-    from candidate_eval import sampled_candidate_log
+    from .data import rolling_time_splits
+    from .candidate_eval import sampled_candidate_log
     log, folds = rolling_time_splits(frame, n_folds=config["folds"],
                                      warmup_fraction=config["warmup_fraction"])
     report = []
@@ -320,10 +335,10 @@ def execute(lock, output, *, loader=None, evaluator=None):
     atomic_json(output, artifact)
     try:
         if loader is None:
-            from kion_data import load_kion
+            from .kion_data import load_kion
             loader = load_kion
         if evaluator is None:
-            from rolling_eval import run_rolling_frame
+            from .rolling_eval import run_rolling_frame
             evaluator = run_rolling_frame
         require_api(evaluator)
         load_wall, load_cpu = time.perf_counter(), time.process_time()

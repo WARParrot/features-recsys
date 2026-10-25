@@ -33,7 +33,7 @@ Protocol v5 freezes training features at the first training timestamp. For the e
 
 ## Execution outcome (appended after completion; design above unchanged)
 
-The 1k pilot and the subsequent 10k/three-seed/three-fold factorial follow-up both completed. The immutable 10k lock hash is `5ff59a75b37cd13d6110af9b5afe284f021d428b5449c21c1e96f2317388ff78`; source revision `388e488`. All four variants share split and candidate fingerprints within seed. The 10k expanded-snapshot mean AUC delta is +.01458, but only fold0 intervals exclude zero; all nine sampled-NDCG delta intervals exceed +.02 and popularity still wins. These outcomes do not change the pre-execution design or convert exploration into confirmation. Full results, limitations and costs: [10k report](audits/v6_10k_results.md).
+The 1k pilot and the subsequent 10k/three-seed/three-fold factorial follow-up both completed. The immutable 10k lock hash is `5ff59a75b37cd13d6110af9b5afe284f021d428b5449c21c1e96f2317388ff78`; source revision `388e488`. All four variants share split and candidate fingerprints within seed. The 10k expanded-snapshot mean AUC delta is +.01458, but only fold0 intervals exclude zero; all nine sampled-NDCG delta intervals exceed +.02 and popularity still wins. These outcomes do not change the pre-execution design or convert exploration into confirmation. Full results, limitations and costs: [10k report](../audits/v6_10k_results.md).
 
 ## Conclusions and unclosed external evidence
 

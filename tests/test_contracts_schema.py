@@ -1,6 +1,6 @@
 import pytest
 
-from experiment_contracts import validate_result, validate_run_collection
+from recsys_corrected_artifact.experiment_contracts import validate_result, validate_run_collection
 
 
 def test_result_contract_requires_split_metadata():

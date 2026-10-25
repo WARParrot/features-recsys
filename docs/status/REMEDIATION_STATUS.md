@@ -19,7 +19,7 @@ This ledger separates implemented corrections from experiments and data limitati
 
 ## Completed experimental evidence
 
-The 10k-user, three-seed, three-temporal-fold, four-variant locked factorial follow-up completed all 12 cells. Exact split/candidate fingerprints, finite endpoints and diagnostic gates passed; conditional user-cluster AUC/ranking intervals and end-to-end costs are retained. See `audits/v6_10k_results.md`. Expanded-snapshot mean AUC gain +.01458 is mostly early-period-specific; sampled NDCG gain is locally supported but popularity remains stronger. This closes the planned factorial follow-up, not robustness across all candidate/target policies or a deployment claim.
+The 10k-user, three-seed, three-temporal-fold, four-variant locked factorial follow-up completed all 12 cells. Exact split/candidate fingerprints, finite endpoints and diagnostic gates passed; conditional user-cluster AUC/ranking intervals and end-to-end costs are retained. See `../audits/v6_10k_results.md`. Expanded-snapshot mean AUC gain +.01458 is mostly early-period-specific; sampled NDCG gain is locally supported but popularity remains stronger. This closes the planned factorial follow-up, not robustness across all candidate/target policies or a deployment claim.
 
 ## Evidence still required — not claimed complete
 
@@ -35,4 +35,4 @@ KION cannot recover impressions, exposure propensities, first recommendation dec
 
 ## Replay boundaries
 
-The protocol-v4 JSON remains immutable historical evidence at revision `6f8d386d8460be83cc061f5075a714ec32ac3f0c`. The rewritten signed-history equivalent of revision `6f8d386...` is `b3c962f`; trees are unchanged. Protocol-v5 completed but its training was degenerate; see `audits/v5_validity.md`. Current runs use warmup/block snapshots and rolling protocol metadata version 6. Do not pool their metrics with protocol v4. The outer result schema is still version 4; rolling semantics are separately versioned in `rolling_protocol_version` and `rolling_protocol`.
+The protocol-v4 JSON remains immutable historical evidence at revision `6f8d386d8460be83cc061f5075a714ec32ac3f0c`. The rewritten signed-history equivalent of revision `6f8d386...` is `b3c962f`; trees are unchanged. Protocol-v5 completed but its training was degenerate; see `../audits/v5_validity.md`. Current runs use warmup/block snapshots and rolling protocol metadata version 6. Do not pool their metrics with protocol v4. The outer result schema is still version 4; rolling semantics are separately versioned in `rolling_protocol_version` and `rolling_protocol`.

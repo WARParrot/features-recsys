@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from validate_protocol import (
+from recsys_corrected_artifact.validate_protocol import (
     ProtocolValidationError,
     validate_protocol_files,
     validate_protocol_payload,
@@ -13,8 +13,8 @@ from validate_protocol import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CANONICAL_V4 = ROOT / "results" / "kion_50k_protocol_v4.json"
-LEGACY_V3 = ROOT / "results" / "kion_10k_corrected.json"
+CANONICAL_V4 = ROOT / "results" / "archive/v4/kion_50k_protocol_v4.json"
+LEGACY_V3 = ROOT / "results" / "archive/validation/kion_10k_corrected.json"
 
 
 def _valid_kion_payload():
@@ -52,7 +52,7 @@ def _valid_kion_payload():
             "protocol_version": 4,
             "dataset": "kion",
             "seeds": [42],
-            "command": "python compare_methods.py --json",
+            "command": "python -m recsys_corrected_artifact.compare_methods --json",
             "python": "3.11.0",
             "platform": "test-platform",
             "packages": {"numpy": "2.0.0"},
@@ -196,7 +196,12 @@ def test_v4_collection_rejects_a_legacy_artifact():
 
 def test_validator_cli_accepts_canonical_v4_result():
     result = subprocess.run(
-        [sys.executable, str(ROOT / "validate_protocol.py"), str(CANONICAL_V4)],
+        [
+            sys.executable,
+            "-m",
+            "recsys_corrected_artifact.validate_protocol",
+            str(CANONICAL_V4),
+        ],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -210,7 +215,12 @@ def test_validator_cli_accepts_canonical_v4_result():
 
 def test_validator_cli_rejects_legacy_result():
     result = subprocess.run(
-        [sys.executable, str(ROOT / "validate_protocol.py"), str(LEGACY_V3)],
+        [
+            sys.executable,
+            "-m",
+            "recsys_corrected_artifact.validate_protocol",
+            str(LEGACY_V3),
+        ],
         cwd=ROOT,
         capture_output=True,
         text=True,

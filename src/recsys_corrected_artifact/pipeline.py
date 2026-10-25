@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 
-from auto_features import compute_specs, enumerate_specs
-from candidate_eval import (
+from .auto_features import compute_specs, enumerate_specs
+from .candidate_eval import (
     candidate_features as build_candidate_features,
     causal_group_popularity_scores,
     causal_item_popularity_scores,
@@ -11,14 +11,14 @@ from candidate_eval import (
     score_candidate_sets,
     score_logged_impressions,
 )
-from data import generate_synthetic, split_metadata, time_split
-from causal_features import BASELINE_FEATURES, CATEGORICAL_FEATURES, build_baseline_features
-from decay_features import build_decay_features
-from models import auc, fit_lgbm, fit_lgbm_fixed
-from ranking_references import score_reference_rankings
-from feature_selectors import forward_select, gain_top_k
-from linear_model import fit_logistic, logistic_auc, tune_logistic
-from mind_data import load_mind, summarize_mind_metadata
+from .data import generate_synthetic, split_metadata, time_split
+from .causal_features import BASELINE_FEATURES, CATEGORICAL_FEATURES, build_baseline_features
+from .decay_features import build_decay_features
+from .models import auc, fit_lgbm, fit_lgbm_fixed
+from .ranking_references import score_reference_rankings
+from .feature_selectors import forward_select, gain_top_k
+from .linear_model import fit_logistic, logistic_auc, tune_logistic
+from .mind_data import load_mind, summarize_mind_metadata
 
 
 CONFIG_GRID = [

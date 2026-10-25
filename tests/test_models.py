@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-import models
+import recsys_corrected_artifact.models as models
 
 
 def test_fit_lgbm_early_stopping_uses_only_primary_auc(monkeypatch):

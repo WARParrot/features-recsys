@@ -3,7 +3,7 @@ import zipfile
 import pandas as pd
 import pytest
 
-from kion_data import load_kion
+from recsys_corrected_artifact.kion_data import load_kion
 
 
 def _write_fixture(tmp_path):

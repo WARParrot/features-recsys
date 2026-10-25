@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from data import rolling_time_splits
-from rolling_eval import _fold_features, _history_blocks, run_rolling_frame, run_rolling_many
+from recsys_corrected_artifact.data import rolling_time_splits
+from recsys_corrected_artifact.rolling_eval import _fold_features, _history_blocks, run_rolling_frame, run_rolling_many
 
 
 def frame(n=100):
@@ -116,7 +116,7 @@ def test_sparse_blocks_and_missing_warmup_fail_explicitly():
 
 
 def test_exact_split_fingerprints_and_predictor_only_diagnostics():
-    from rolling_eval import _fold_diagnostic_payload
+    from recsys_corrected_artifact.rolling_eval import _fold_diagnostic_payload
     log, folds = rolling_time_splits(frame(), n_folds=1, warmup_fraction=.2)
     parts = folds[0]
     full = log.assign(predictor=1.0, varying_predictor=np.arange(len(log)))
@@ -144,7 +144,7 @@ def test_exact_split_fingerprints_and_predictor_only_diagnostics():
 
 
 def test_api_forwards_identical_splits_without_fitting(monkeypatch):
-    import rolling_eval
+    import recsys_corrected_artifact.rolling_eval as rolling_eval
     seen = []
 
     def fake(log, parts, seed, fold, dataset, **kwargs):

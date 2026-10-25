@@ -138,7 +138,7 @@ python3.11 -m venv .venv
 .venv/bin/python - <<'PY'
 import json
 from pathlib import Path
-import run_ablation as ab
+from recsys_corrected_artifact import run_ablation as ab
 
 result = json.loads(Path("results/current/kion_10k_v7_final.json").read_text())
 lock_path = Path("results/current/kion_10k_v7_final.lock.json")
@@ -170,7 +170,7 @@ PY
 ```bash
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 
-.venv/bin/python run_ablation.py --dry-run \
+.venv/bin/python -m recsys_corrected_artifact.run_ablation --dry-run \
   --lock results/current/kion_10k_rerun.lock.json \
   --kion-interactions datasets/kion/interactions.csv \
   --kion-users datasets/kion/users.csv \
@@ -181,7 +181,7 @@ export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
   --candidate-n-negatives 99 --candidate-max-queries 400 \
   --candidate-sampling uniform --smoke-users 1000 --max-wall-seconds 172800
 
-.venv/bin/python run_ablation.py --execute-lock results/current/kion_10k_rerun.lock.json \
+.venv/bin/python -m recsys_corrected_artifact.run_ablation --execute-lock results/current/kion_10k_rerun.lock.json \
   --output results/current/kion_10k_rerun.json
 ```
 
@@ -189,10 +189,9 @@ export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 
 ## Структура проекта
 
-- `run_ablation.py`, `rolling_eval.py` — запуск факторного эксперимента и временная оценка.
-- `causal_features.py`, `auto_features.py`, `decay_features.py` — построение признаков.
-- `feature_selectors.py`, `models.py`, `linear_model.py` — отбор признаков и модели.
-- `candidate_eval.py`, `metrics.py`, `ranking_references.py` — кандидаты, ранжирование и метрики.
-- `tests/` — тесты временных границ, разбиений, отбора, метрик и протокола.
-- `results/current/` — текущий артефакт v7; `results/archive/` — исторические и диагностические запуски.
-- `docs/reports/`, `docs/audits/` — подробный отчёт и аудит прошлых версий.
+- `src/recsys_corrected_artifact/` — Python-пакет: запуск, данные, признаки, модели и метрики.
+- `docs/README.md` — навигация по техническим документам и репозиторию.
+- `docs/reports/`, `docs/audits/`, `docs/plans/` — отчёты, аудиты и планы экспериментов.
+- `results/current/` — завершённый артефакт; `results/checkpoints/` — сохранённый legacy checkpoint; `results/archive/` — исторические результаты.
+- `datasets/` — локальные данные, исключённые из Git.
+- `tests/` и `tools/` — проверки и вспомогательные утилиты.

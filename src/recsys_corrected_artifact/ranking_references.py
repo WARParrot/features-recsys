@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from candidate_eval import causal_group_popularity_scores, causal_item_popularity_scores
+from .candidate_eval import causal_group_popularity_scores, causal_item_popularity_scores
 
 
 def score_reference_rankings(log, ranking_log, ranking_features, scorer, *, include_user_item=True):

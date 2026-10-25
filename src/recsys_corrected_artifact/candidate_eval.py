@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
 
-from causal_features import build_baseline_features
-from metrics import mrr_at_k, ndcg_at_k, recall_at_k
-from models import matrix
+from .causal_features import build_baseline_features
+from .metrics import mrr_at_k, ndcg_at_k, recall_at_k
+from .models import matrix
 
 
 def validate_static_catalog(item_catalog):
@@ -211,7 +211,7 @@ def candidate_features(full_log, candidate_log, specs=None, decay_builder=None):
     source_mask = np.r_[np.ones(len(full_log)), np.zeros(len(candidates))]
     features = build_baseline_features(combined, source_mask=source_mask)
     if specs:
-        from auto_features import compute_specs
+        from .auto_features import compute_specs
 
         features = pd.concat(
             [

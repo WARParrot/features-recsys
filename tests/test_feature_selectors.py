@@ -5,7 +5,7 @@ import pytest
 pytest.importorskip("lightgbm")
 pytest.importorskip("sklearn")
 
-from feature_selectors import forward_select
+from recsys_corrected_artifact.feature_selectors import forward_select
 
 
 def _frame(offset, rows=30):

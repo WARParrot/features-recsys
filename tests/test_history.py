@@ -1,6 +1,6 @@
 import pandas as pd
 
-from history import build_histories
+from recsys_corrected_artifact.history import build_histories
 
 
 def test_histories_support_string_item_ids():

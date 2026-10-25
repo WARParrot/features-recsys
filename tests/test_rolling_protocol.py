@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from rolling_eval import _fold_features, run_rolling_frame
+from recsys_corrected_artifact.rolling_eval import _fold_features, run_rolling_frame
 
 
 def _frame():
@@ -18,7 +18,7 @@ def _frame():
 
 def test_role_frozen_features_use_prefix_before_each_role():
     frame = _frame()
-    from data import rolling_time_splits
+    from recsys_corrected_artifact.data import rolling_time_splits
     ordered, folds = rolling_time_splits(frame, n_folds=1)
     parts = folds[0]
     baseline, _, _, _ = _fold_features(ordered, parts, "role_frozen")

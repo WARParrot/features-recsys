@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import feature_selectors as fs
+import recsys_corrected_artifact.feature_selectors as fs
 
 
 @pytest.fixture

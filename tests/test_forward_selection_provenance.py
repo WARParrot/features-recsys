@@ -4,8 +4,8 @@ import json
 import numpy as np
 import pandas as pd
 
-from feature_selectors import budgeted_candidate_order, forward_select
-import rolling_eval
+from recsys_corrected_artifact.feature_selectors import budgeted_candidate_order, forward_select
+import recsys_corrected_artifact.rolling_eval as rolling_eval
 
 
 def _selection_frame():

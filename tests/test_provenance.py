@@ -1,4 +1,4 @@
-from compare_methods import _source_tree_hash
+from recsys_corrected_artifact.compare_methods import _source_tree_hash
 
 
 def test_manifest_excludes_outputs_and_build_metadata(tmp_path):

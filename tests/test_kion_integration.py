@@ -2,7 +2,7 @@ import json
 
 import pandas as pd
 
-from compare_methods import main
+from recsys_corrected_artifact.compare_methods import main
 
 
 def test_kion_rolling_fixture_runs_through_cli(monkeypatch, tmp_path, capsys):
@@ -24,7 +24,7 @@ def test_kion_rolling_fixture_runs_through_cli(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(
         "sys.argv",
         [
-            "compare_methods.py", "--kion-interactions", str(interactions),
+            "recsys-compare", "--kion-interactions", str(interactions),
             "--evaluation", "rolling", "--folds", "1", "--seeds", "42",
             "--forward-max-candidates", "1", "--forward-steps", "1", "--json",
         ],

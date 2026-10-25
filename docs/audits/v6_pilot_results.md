@@ -2,9 +2,9 @@
 
 ## Scope and lock
 
-Evidence: `results/kion_1k_v6_factorial.json`, status `completed`; 1,000 fixed users, all 5,505 retained rows, cohort seed 42, model seed 42, two temporal folds. Initial 20% timestamp groups are history-only; training-block cadence target four (observed four blocks in fold0 and five in fold1 due to remainder groups; not exactly four). Same supervised role event-ID hashes and candidate fingerprints asserted across all four factorial cells. Candidate protocol: uniform 99 negatives, cap 400 attempted positives per fold, selected-cohort historical catalog.
+Evidence: `results/archive/v6/kion_1k_v6_factorial.json`, status `completed`; 1,000 fixed users, all 5,505 retained rows, cohort seed 42, model seed 42, two temporal folds. Initial 20% timestamp groups are history-only; training-block cadence target four (observed four blocks in fold0 and five in fold1 due to remainder groups; not exactly four). Same supervised role event-ID hashes and candidate fingerprints asserted across all four factorial cells. Candidate protocol: uniform 99 negatives, cap 400 attempted positives per fold, selected-cohort historical catalog.
 
-The original 50-user tooling smoke failed because feature selection had no positive training gains. Preserved as `results/kion_1k_v6_failed_smoke.json`. No guard was weakened and no users were repeatedly resampled. A new explicit lock increased the tooling cohort to all 1,000 pilot users; the final artifact retains that lock and smoke results. This change responds to training support, not favorable test scores. Its smoke is not independent validation evidence and must not be pooled with the pilot.
+The original 50-user tooling smoke failed because feature selection had no positive training gains. Preserved as `results/archive/v6/kion_1k_v6_failed_smoke.json`. No guard was weakened and no users were repeatedly resampled. A new explicit lock increased the tooling cohort to all 1,000 pilot users; the final artifact retains that lock and smoke results. This change responds to training support, not favorable test scores. Its smoke is not independent validation evidence and must not be pooled with the pilot.
 
 ## Results
 

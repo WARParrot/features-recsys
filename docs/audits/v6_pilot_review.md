@@ -2,7 +2,7 @@
 
 ## Scope and decision
 
-Read-only code/result review, except creation of this audit. Evidence: `run_ablation.py`, `rolling_eval.py`, `diagnostics.py`, warmup/split implementation, `EXPERIMENT_PLAN_V6.md`, and `results/kion_1k_v6_factorial.json`. No full model runs, commits, or subagents. Targeted tests: **89 passed** (`test_warmup_protocol`, `test_diagnostics`, `test_protocol_comparability`, `test_selection_validity`).
+Read-only code/result review, except creation of this audit. Evidence: `run_ablation.py`, `rolling_eval.py`, `diagnostics.py`, warmup/split implementation, `EXPERIMENT_PLAN_V6.md`, and `results/archive/v6/kion_1k_v6_factorial.json`. No full model runs, commits, or subagents. Targeted tests: **89 passed** (`test_warmup_protocol`, `test_diagnostics`, `test_protocol_comparability`, `test_selection_validity`).
 
 **Bottom line:** pilot execution/comparability and informative-history repair pass; recommendation-quality superiority does not. One explicit plan/implementation discrepancy should be acknowledged before interpreting the locked follow-up.
 

@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from diagnostics import feature_diagnostics, fold_diagnostics, role_diagnostics
-from run_ablation import (CELLS, assert_comparable, atomic_json, execute, read_lock,
+from recsys_corrected_artifact.diagnostics import feature_diagnostics, fold_diagnostics, role_diagnostics
+from recsys_corrected_artifact.run_ablation import (CELLS, assert_comparable, atomic_json, execute, read_lock,
                           json_value, preflight, run_factorial, validate_result, write_lock)
 
 
@@ -133,7 +133,7 @@ def test_missing_corrected_api_rejected():
 
 
 def test_execute_load_once_and_smoke_before_main(tmp_path, monkeypatch):
-    monkeypatch.setattr("run_ablation.preflight", lambda *a: [{"status": "tested separately"}])
+    monkeypatch.setattr("recsys_corrected_artifact.run_ablation.preflight", lambda *a: [{"status": "tested separately"}])
     loads, calls = [], []
 
     def loader(*args, **kwargs):
@@ -162,7 +162,7 @@ def test_execute_load_once_and_smoke_before_main(tmp_path, monkeypatch):
 
 
 def test_failure_has_atomic_artifact_and_never_runs_main(tmp_path, monkeypatch):
-    monkeypatch.setattr("run_ablation.preflight", lambda *a: [])
+    monkeypatch.setattr("recsys_corrected_artifact.run_ablation.preflight", lambda *a: [])
     calls = []
 
     def broken(data, seed, n_folds, dataset, history_mode, feature_space,
@@ -222,7 +222,7 @@ def test_result_success_gate_rejects_incomplete_outputs(failure):
 
 
 def test_preflight_support_and_no_metric_driven_resampling():
-    from data import generate_synthetic
+    from recsys_corrected_artifact.data import generate_synthetic
     data = generate_synthetic(n_events=1200, n_users=20, n_items=30, seed=42)
     report = preflight(data, config())
     assert len(report) == 2
@@ -238,7 +238,7 @@ def test_preflight_support_and_no_metric_driven_resampling():
 
 
 def test_preflight_failure_artifact_stops_before_models(tmp_path):
-    from data import generate_synthetic
+    from recsys_corrected_artifact.data import generate_synthetic
     single = generate_synthetic(n_events=200, n_users=4, n_items=10)
     single["binary_label"] = 1
     output = tmp_path / "unsupported.json"
